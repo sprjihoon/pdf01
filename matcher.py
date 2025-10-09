@@ -274,6 +274,17 @@ def extract_phones_from_text(text):
         matches = re.findall(pattern, text)
         phones.extend(matches)
     
+    # 7~10자리 숫자 (엑셀에서 010이 빠진 경우)
+    # 예: 27357395 (8자리), 108302565 (9자리), 2584757 (7자리), 1026417075 (10자리)
+    # 주변에 다른 숫자가 없는 독립된 7~10자리만 추출
+    short_phone_pattern = r'(?:^|[^\d])(\d{7,10})(?:[^\d]|$)'
+    short_matches = re.findall(short_phone_pattern, text)
+    
+    # 7~10자리 모두 추가 (전화번호 가능성)
+    for match in short_matches:
+        if len(match) in [7, 8, 9, 10]:
+            phones.append(match)
+    
     return phones
 
 
