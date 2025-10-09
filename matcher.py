@@ -63,8 +63,10 @@ def normalize_name(text):
 def extract_name_candidates(text):
     """
     이름에서 여러 후보 추출
-    - 괄호 안 이름: 임재숙(양성희) -> [임재숙, 양성희]
+    - 소괄호 안 이름: 임재숙(양성희) -> [임재숙, 양성희]
+    - 대괄호 안 이름: 이순자[이화순] -> [이순자, 이화순]
     - 공백으로 구분된 이름: 윤익주 김민정 -> [윤익주, 김민정]
+    - 숫자 제거 버전: 본순박0 -> [본순박0, 본순박]
     - 전체 정규화된 이름도 포함
     """
     if not text or pd.isna(text):
@@ -77,32 +79,62 @@ def extract_name_candidates(text):
     normalized_full = normalize_name(text)
     if normalized_full:
         candidates.append(normalized_full)
+        # 숫자 제거 버전도 추가 (예: 본순박0 -> 본순박)
+        no_digit = re.sub(r'[0-9]', '', normalized_full)
+        if no_digit and no_digit != normalized_full and no_digit not in candidates:
+            candidates.append(no_digit)
     
-    # 2. 괄호 안의 이름 추출
+    # 2. 소괄호 () 안의 이름 추출
     # 예: 임재숙(양성희) -> 양성희
-    bracket_matches = re.findall(r'\(([^)]+)\)', text)
+    paren_matches = re.findall(r'\(([^)]+)\)', text)
+    for match in paren_matches:
+        normalized = normalize_name(match)
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
+            # 숫자 제거 버전
+            no_digit = re.sub(r'[0-9]', '', normalized)
+            if no_digit and no_digit != normalized and no_digit not in candidates:
+                candidates.append(no_digit)
+    
+    # 3. 대괄호 [] 안의 이름 추출
+    # 예: 이순자[이화순] -> 이화순
+    bracket_matches = re.findall(r'\[([^\]]+)\]', text)
     for match in bracket_matches:
         normalized = normalize_name(match)
         if normalized and normalized not in candidates:
             candidates.append(normalized)
+            # 숫자 제거 버전
+            no_digit = re.sub(r'[0-9]', '', normalized)
+            if no_digit and no_digit != normalized and no_digit not in candidates:
+                candidates.append(no_digit)
     
-    # 3. 괄호 밖의 이름 추출
-    # 예: 임재숙(양성희) -> 임재숙
+    # 4. 괄호 밖의 이름 추출
+    # 예: 임재숙(양성희) -> 임재숙, 이순자[이화순] -> 이순자
     text_without_brackets = re.sub(r'\([^)]+\)', '', text)
+    text_without_brackets = re.sub(r'\[[^\]]+\]', '', text_without_brackets)
     normalized = normalize_name(text_without_brackets)
     if normalized and normalized not in candidates:
         candidates.append(normalized)
+        # 숫자 제거 버전
+        no_digit = re.sub(r'[0-9]', '', normalized)
+        if no_digit and no_digit != normalized and no_digit not in candidates:
+            candidates.append(no_digit)
     
-    # 4. 공백으로 구분된 이름들
+    # 5. 공백으로 구분된 이름들
     # 예: 윤익주 김민정 -> 윤익주, 김민정
     parts = text.split()
     if len(parts) > 1:
         for part in parts:
-            # 괄호 제거
+            # 모든 괄호 제거
             part_clean = re.sub(r'\([^)]+\)', '', part)
+            part_clean = re.sub(r'\[[^\]]+\]', '', part_clean)
             normalized = normalize_name(part_clean)
             if normalized and normalized not in candidates:
                 candidates.append(normalized)
+                # 숫자 제거 버전
+                no_digit = re.sub(r'[0-9]', '', normalized)
+                if no_digit and no_digit != normalized and no_digit not in candidates:
+                    candidates.append(no_digit)
     
     return candidates
 
@@ -206,6 +238,12 @@ def extract_names_from_text(text):
     # 한글 이름 패턴 (2-4자)
     korean_names = re.findall(r'[가-힣]{2,4}', text)
     candidates.extend(korean_names)
+    
+    # 한글 외자 이름 패턴 (독립적으로 나타나는 1자)
+    # 공백, 줄바꿈, 쉼표 등으로 구분된 1자만 추출
+    # 예: "셈" (독립적), "서울"의 "서"는 제외
+    single_char_names = re.findall(r'(?:^|\s|,|\.|\(|\)|:)([가-힣])(?:\s|,|\.|\(|\)|:|$)', text)
+    candidates.extend(single_char_names)
     
     # 영문 이름 패턴 1: 일반적인 형식 (John Smith)
     english_names_1 = re.findall(r'[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*', text)
