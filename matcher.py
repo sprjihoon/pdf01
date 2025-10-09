@@ -133,15 +133,20 @@ def normalize_phone(text):
     if numbers.startswith('10') and len(numbers) == 10:
         return '0' + numbers
     
-    # 8자리 숫자인 경우 앞에 010 추가 시도
-    # 예: 12345678 -> 01012345678
+    # 9자리 숫자이고 10으로 시작하면 앞에 0 추가 (0이 하나 빠진 경우)
+    # 예: 108302565 -> 0108302565
+    if numbers.startswith('10') and len(numbers) == 9:
+        return '0' + numbers
+    
+    # 8자리 숫자인 경우 앞에 010 추가 시도 (010에서 01이 빠진 경우)
+    # 예: 27357395 -> 01027357395
     if len(numbers) == 8:
         return '010' + numbers
     
-    # 7자리 숫자인 경우 앞에 0010 추가 시도 (00이 두 개 빠진 경우)
-    # 예: 1234567 -> 00101234567
+    # 7자리 숫자인 경우 앞에 010 추가 시도 (010에서 010이 빠진 경우)
+    # 예: 2584757 -> 01012584757 (추가 확인 필요)
     if len(numbers) == 7:
-        return '0010' + numbers
+        return '010' + numbers
     
     return ""
 
