@@ -235,8 +235,9 @@ def extract_names_from_text(text):
     """텍스트에서 이름 후보 추출"""
     candidates = []
     
-    # 한글 이름 패턴 (2-4자)
-    korean_names = re.findall(r'[가-힣]{2,4}', text)
+    # 한글 이름 패턴 (2-10자로 확장 - 긴 이름도 인식)
+    # 예: 이경애본순박영아 (8자)
+    korean_names = re.findall(r'[가-힣]{2,10}', text)
     candidates.extend(korean_names)
     
     # 한글 외자 이름 패턴 (독립적으로 나타나는 1자)
