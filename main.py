@@ -248,7 +248,7 @@ class MainWindow(QMainWindow):
         # 유사도 매칭 체크박스
         fuzzy_layout = QHBoxLayout()
         self.fuzzy_check = QCheckBox("유사도 매칭 사용 (보조)")
-        self.fuzzy_check.setChecked(False)
+        self.fuzzy_check.setChecked(True)  # 기본값을 True로 변경
         self.fuzzy_check.stateChanged.connect(self.on_fuzzy_changed)
         fuzzy_layout.addWidget(self.fuzzy_check)
         
@@ -258,7 +258,7 @@ class MainWindow(QMainWindow):
         self.threshold_spin.setMaximum(100)
         self.threshold_spin.setValue(90)
         self.threshold_spin.setSuffix("%")
-        self.threshold_spin.setEnabled(False)
+        self.threshold_spin.setEnabled(True)  # 기본값이 True이므로 활성화
         fuzzy_layout.addWidget(self.threshold_spin)
         
         fuzzy_layout.addStretch()

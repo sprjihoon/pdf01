@@ -60,12 +60,60 @@ def normalize_name(text):
     return text
 
 
+def extract_name_candidates(text):
+    """
+    이름에서 여러 후보 추출
+    - 괄호 안 이름: 임재숙(양성희) -> [임재숙, 양성희]
+    - 공백으로 구분된 이름: 윤익주 김민정 -> [윤익주, 김민정]
+    - 전체 정규화된 이름도 포함
+    """
+    if not text or pd.isna(text):
+        return []
+    
+    text = str(text).strip()
+    candidates = []
+    
+    # 1. 전체 정규화 (기본)
+    normalized_full = normalize_name(text)
+    if normalized_full:
+        candidates.append(normalized_full)
+    
+    # 2. 괄호 안의 이름 추출
+    # 예: 임재숙(양성희) -> 양성희
+    bracket_matches = re.findall(r'\(([^)]+)\)', text)
+    for match in bracket_matches:
+        normalized = normalize_name(match)
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
+    
+    # 3. 괄호 밖의 이름 추출
+    # 예: 임재숙(양성희) -> 임재숙
+    text_without_brackets = re.sub(r'\([^)]+\)', '', text)
+    normalized = normalize_name(text_without_brackets)
+    if normalized and normalized not in candidates:
+        candidates.append(normalized)
+    
+    # 4. 공백으로 구분된 이름들
+    # 예: 윤익주 김민정 -> 윤익주, 김민정
+    parts = text.split()
+    if len(parts) > 1:
+        for part in parts:
+            # 괄호 제거
+            part_clean = re.sub(r'\([^)]+\)', '', part)
+            normalized = normalize_name(part_clean)
+            if normalized and normalized not in candidates:
+                candidates.append(normalized)
+    
+    return candidates
+
+
 def normalize_phone(text):
     """
     전화번호 정규화
     - 숫자만 추출
     - 010으로 시작하는 번호만 인정
     - 10으로 시작하는 10자리는 앞에 0 추가 (엑셀에서 0이 사라진 경우 대응)
+    - 8자리 숫자는 앞에 010 추가 시도
     """
     if not text or pd.isna(text):
         return ""
@@ -84,6 +132,16 @@ def normalize_phone(text):
     # 예: 1026417075 -> 01026417075
     if numbers.startswith('10') and len(numbers) == 10:
         return '0' + numbers
+    
+    # 8자리 숫자인 경우 앞에 010 추가 시도
+    # 예: 12345678 -> 01012345678
+    if len(numbers) == 8:
+        return '010' + numbers
+    
+    # 7자리 숫자인 경우 앞에 0010 추가 시도 (00이 두 개 빠진 경우)
+    # 예: 1234567 -> 00101234567
+    if len(numbers) == 7:
+        return '0010' + numbers
     
     return ""
 
@@ -144,9 +202,16 @@ def extract_names_from_text(text):
     korean_names = re.findall(r'[가-힣]{2,4}', text)
     candidates.extend(korean_names)
     
-    # 영문 이름 패턴
-    english_names = re.findall(r'[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*', text)
-    candidates.extend(english_names)
+    # 영문 이름 패턴 1: 일반적인 형식 (John Smith)
+    english_names_1 = re.findall(r'[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*', text)
+    candidates.extend(english_names_1)
+    
+    # 영문 이름 패턴 2: 전체 대문자 형식 (LI JINGSHI, BAI FENGJIU 등)
+    # 2개 또는 3개의 대문자 단어로 이루어진 패턴 (각각 독립적으로)
+    english_names_2_word = re.findall(r'\b[A-Z]{2,}\s+[A-Z]{2,}\b', text)
+    candidates.extend(english_names_2_word)
+    english_names_3_word = re.findall(r'\b[A-Z]{2,}\s+[A-Z]{2,}\s+[A-Z]{2,}\b', text)
+    candidates.extend(english_names_3_word)
     
     return candidates
 
@@ -348,14 +413,14 @@ def match_rows_to_pages(df, pages, use_fuzzy=False, threshold=90):
     
     # 각 엑셀 행에 대해 매칭
     for row_idx, row in df.iterrows():
-        # 정규화
-        excel_name = normalize_name(row['구매자명'])
+        # 이름 후보 추출 (괄호 안 이름, 공백 구분 이름 등)
+        excel_name_candidates = extract_name_candidates(row['구매자명'])
         excel_phone = normalize_phone(row['전화번호'])
         excel_addr = normalize_addr(row['주소'])
         excel_order = normalize_order_number(row['주문번호'])
         
-        # 빈 값 체크
-        if not excel_name or not excel_phone or not excel_addr or not excel_order:
+        # 빈 값 체크 (이름 후보가 하나도 없거나 다른 필드가 비어있으면)
+        if not excel_name_candidates or not excel_phone or not excel_addr or not excel_order:
             match_details[row_idx] = {
                 'page_idx': -1,
                 'score': 0,
@@ -373,15 +438,17 @@ def match_rows_to_pages(df, pages, use_fuzzy=False, threshold=90):
             if page_info.index in used_pages:
                 continue
             
-            score, reason = calc_match_score(
-                excel_name, excel_phone, excel_addr, excel_order,
-                page_info, use_fuzzy, threshold
-            )
-            
-            if score > best_score:
-                best_score = score
-                best_page = page_info.index
-                best_reason = reason
+            # 모든 이름 후보에 대해 시도 (가장 높은 점수 선택)
+            for excel_name in excel_name_candidates:
+                score, reason = calc_match_score(
+                    excel_name, excel_phone, excel_addr, excel_order,
+                    page_info, use_fuzzy, threshold
+                )
+                
+                if score > best_score:
+                    best_score = score
+                    best_page = page_info.index
+                    best_reason = reason
         
         # 매칭 결과 저장
         if best_score > 0:
