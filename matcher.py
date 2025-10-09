@@ -264,26 +264,25 @@ def extract_phones_from_text(text):
     """텍스트에서 전화번호 추출"""
     phones = []
     
-    # 010으로 시작하는 전화번호 패턴
-    patterns = [
-        r'010[-\s]?\d{3,4}[-\s]?\d{4}',  # 010-1234-5678 또는 010 1234 5678
-        r'010\d{7,8}',  # 01012345678
-    ]
+    # 7~11자리 독립된 숫자 모두 추출 (전화번호 가능성)
+    # 예: 27357395 (8자리), 01012345678 (11자리), 1026417075 (10자리)
+    # 주변에 다른 숫자가 없는 독립된 숫자만 추출
+    phone_pattern = r'(?:^|[^\d])(\d{7,11})(?:[^\d]|$)'
+    matches = re.findall(phone_pattern, text)
     
-    for pattern in patterns:
-        matches = re.findall(pattern, text)
-        phones.extend(matches)
-    
-    # 7~10자리 숫자 (엑셀에서 010이 빠진 경우)
-    # 예: 27357395 (8자리), 108302565 (9자리), 2584757 (7자리), 1026417075 (10자리)
-    # 주변에 다른 숫자가 없는 독립된 7~10자리만 추출
-    short_phone_pattern = r'(?:^|[^\d])(\d{7,10})(?:[^\d]|$)'
-    short_matches = re.findall(short_phone_pattern, text)
-    
-    # 7~10자리 모두 추가 (전화번호 가능성)
-    for match in short_matches:
-        if len(match) in [7, 8, 9, 10]:
+    # 7~11자리 모두 추가 (전화번호 가능성)
+    for match in matches:
+        if len(match) in [7, 8, 9, 10, 11]:
             phones.append(match)
+    
+    # 하이픈이나 공백이 포함된 010 번호도 처리
+    # 010-1234-5678 형식
+    hyphen_pattern = r'010[-\s]\d{3,4}[-\s]\d{4}'
+    hyphen_matches = re.findall(hyphen_pattern, text)
+    phones.extend(hyphen_matches)
+    
+    # 중복 제거
+    phones = list(dict.fromkeys(phones))
     
     return phones
 
