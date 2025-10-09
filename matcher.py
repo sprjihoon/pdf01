@@ -397,7 +397,7 @@ def extract_pages(pdf_path):
 
 def calc_match_score(excel_name, excel_phone, excel_addr, excel_order, page_info, use_fuzzy=False, threshold=90):
     """
-    엑셀 행과 PDF 페이지의 매칭 점수 계산
+    엑셀 행과 PDF 페이지의 매칭 점수 계산 (최적화 버전)
     
     Args:
         excel_name: 정규화된 엑셀 이름
@@ -420,7 +420,7 @@ def calc_match_score(excel_name, excel_phone, excel_addr, excel_order, page_info
                      for addr in page_info.norm_addr_candidates)
     order_match = excel_order in page_info.norm_order_candidates
     
-    # 4가지 모두 일치하면 100점
+    # 4가지 모두 일치하면 100점 (조기 종료)
     if name_match and phone_match and addr_match and order_match:
         return 100, 'name+phone+addr+order'
     
@@ -428,32 +428,33 @@ def calc_match_score(excel_name, excel_phone, excel_addr, excel_order, page_info
     if not use_fuzzy:
         return 0, 'no_match'
     
-    # 유사도 매칭
+    # 빠른 전화번호 체크 (전화번호가 아예 없으면 스킵)
+    if not page_info.norm_phone_list or not excel_phone:
+        return 0, 'no_match'
+    
+    # 유사도 매칭 (최적화: 미리 최대값 계산)
     max_score = 0
     best_reason = 'no_match'
     
+    # 전화번호 유사도 먼저 확인 (가장 정확한 기준)
+    best_phone_sim = max((fuzz.ratio(excel_phone, p) for p in page_info.norm_phone_list), default=0)
+    
+    # 전화번호 유사도가 너무 낮으면 조기 종료
+    if best_phone_sim < 70:
+        return 0, 'no_match'
+    
     # 이름 유사도
-    for page_name in page_info.norm_name_candidates:
-        name_sim = fuzz.ratio(excel_name, page_name)
-        
-        # 전화번호 유사도
-        for page_phone in page_info.norm_phone_list:
-            phone_sim = fuzz.ratio(excel_phone, page_phone)
-            
-            # 주소 유사도
-            for page_addr in page_info.norm_addr_candidates:
-                addr_sim = fuzz.partial_ratio(excel_addr, page_addr)
-                
-                # 주문번호 유사도
-                for page_order in page_info.norm_order_candidates:
-                    order_sim = fuzz.ratio(excel_order, page_order)
-                    
-                    # 평균 유사도 (4가지)
-                    avg_sim = (name_sim + phone_sim + addr_sim + order_sim) / 4
-                    
-                    if avg_sim > max_score:
-                        max_score = avg_sim
-                        best_reason = f'fuzzy(name:{name_sim:.0f},phone:{phone_sim:.0f},addr:{addr_sim:.0f},order:{order_sim:.0f})'
+    best_name_sim = max((fuzz.ratio(excel_name, n) for n in page_info.norm_name_candidates), default=0) if page_info.norm_name_candidates else 0
+    
+    # 주소 유사도
+    best_addr_sim = max((fuzz.partial_ratio(excel_addr, a) for a in page_info.norm_addr_candidates), default=0) if page_info.norm_addr_candidates else 0
+    
+    # 주문번호 유사도
+    best_order_sim = max((fuzz.ratio(excel_order, o) for o in page_info.norm_order_candidates), default=0) if page_info.norm_order_candidates else 0
+    
+    # 평균 유사도
+    max_score = (best_name_sim + best_phone_sim + best_addr_sim + best_order_sim) / 4
+    best_reason = f'fuzzy(name:{best_name_sim:.0f},phone:{best_phone_sim:.0f},addr:{best_addr_sim:.0f},order:{best_order_sim:.0f})'
     
     # 임계값 이상이면 점수 반환
     if max_score >= threshold:
@@ -520,6 +521,14 @@ def match_rows_to_pages(df, pages, use_fuzzy=False, threshold=90):
                     best_score = score
                     best_page = page_info.index
                     best_reason = reason
+                    
+                    # 완벽한 매칭을 찾으면 즉시 중단 (조기 종료)
+                    if score == 100:
+                        break
+            
+            # 완벽한 매칭을 찾았으면 다른 페이지 검색 중단
+            if best_score == 100:
+                break
         
         # 매칭 결과 저장
         if best_score > 0:
