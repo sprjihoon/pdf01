@@ -1,0 +1,432 @@
+"""
+PDF 텍스트 추출 및 매칭 로직
+- 텍스트 추출 및 정규화
+- 이름 + 전화번호 + 주소 3요소 매칭
+- PDF 페이지 재정렬
+"""
+
+import re
+from dataclasses import dataclass
+from typing import List, Dict, Tuple, Set
+import pdfplumber
+from pypdf import PdfReader, PdfWriter
+from rapidfuzz import fuzz
+
+
+@dataclass
+class PageInfo:
+    """PDF 페이지 정보"""
+    index: int  # 페이지 번호 (0-based)
+    raw_text: str  # 원본 텍스트
+    norm_name_candidates: List[str]  # 정규화된 이름 후보들
+    norm_phone_list: List[str]  # 정규화된 전화번호 리스트
+    norm_addr_candidates: List[str]  # 정규화된 주소 후보들
+    norm_order_candidates: List[str]  # 정규화된 주문번호 후보들
+
+
+def remove_special_chars(text):
+    """제로폭 문자 및 비정상 공백 제거"""
+    if not text:
+        return ""
+    
+    # 제로폭 문자 제거
+    text = re.sub(r'[\u200b-\u200f\ufeff]', '', text)
+    
+    # 비정상 공백 제거
+    text = re.sub(r'[\u3000\xa0]', ' ', text)
+    
+    return text
+
+
+def normalize_name(text):
+    """
+    이름 정규화
+    - 공백, 특수문자 제거
+    - 영문은 대문자화
+    - 한글은 그대로
+    """
+    if not text or pd.isna(text):
+        return ""
+    
+    text = str(text).strip()
+    text = remove_special_chars(text)
+    
+    # 공백 및 특수문자 제거 (한글, 영문, 숫자만 유지)
+    text = re.sub(r'[^가-힣A-Za-z0-9]', '', text)
+    
+    # 영문은 대문자화
+    text = text.upper()
+    
+    return text
+
+
+def normalize_phone(text):
+    """
+    전화번호 정규화
+    - 숫자만 추출
+    - 010으로 시작하는 번호만 인정
+    - 10으로 시작하는 10자리는 앞에 0 추가 (엑셀에서 0이 사라진 경우 대응)
+    """
+    if not text or pd.isna(text):
+        return ""
+    
+    text = str(text).strip()
+    text = remove_special_chars(text)
+    
+    # 숫자만 추출
+    numbers = re.sub(r'[^0-9]', '', text)
+    
+    # 010으로 시작하고 10-11자리인 번호
+    if numbers.startswith('010') and len(numbers) in [10, 11]:
+        return numbers
+    
+    # 10으로 시작하고 10자리인 번호 (엑셀에서 앞의 0이 사라진 경우)
+    # 예: 1026417075 -> 01026417075
+    if numbers.startswith('10') and len(numbers) == 10:
+        return '0' + numbers
+    
+    return ""
+
+
+def normalize_addr(text):
+    """
+    주소 정규화
+    - 괄호, 쉼표, 하이픈, 공백 제거
+    - 숫자, 한글, 영문만 유지
+    """
+    if not text or pd.isna(text):
+        return ""
+    
+    text = str(text).strip()
+    text = remove_special_chars(text)
+    
+    # 괄호 내용 추출 우선
+    bracket_match = re.search(r'\(([^)]{5,})\)', text)
+    if bracket_match:
+        text = bracket_match.group(1)
+    
+    # 특수문자, 공백 제거 (한글, 영문, 숫자만 유지)
+    text = re.sub(r'[^가-힣A-Za-z0-9]', '', text)
+    
+    # 영문은 대문자화
+    text = text.upper()
+    
+    return text
+
+
+def normalize_order_number(text):
+    """
+    주문번호 정규화
+    - 영문자와 숫자만 추출
+    - 대문자 변환
+    - 하이픈, 공백 등 특수문자 제거
+    """
+    if not text or pd.isna(text):
+        return ""
+    
+    text = str(text).strip()
+    text = remove_special_chars(text)
+    
+    # 영문자와 숫자만 추출
+    result = re.sub(r'[^a-zA-Z0-9]', '', text)
+    
+    # 대문자 변환
+    result = result.upper()
+    
+    return result
+
+
+def extract_names_from_text(text):
+    """텍스트에서 이름 후보 추출"""
+    candidates = []
+    
+    # 한글 이름 패턴 (2-4자)
+    korean_names = re.findall(r'[가-힣]{2,4}', text)
+    candidates.extend(korean_names)
+    
+    # 영문 이름 패턴
+    english_names = re.findall(r'[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*', text)
+    candidates.extend(english_names)
+    
+    return candidates
+
+
+def extract_phones_from_text(text):
+    """텍스트에서 전화번호 추출"""
+    phones = []
+    
+    # 010으로 시작하는 전화번호 패턴
+    patterns = [
+        r'010[-\s]?\d{3,4}[-\s]?\d{4}',  # 010-1234-5678 또는 010 1234 5678
+        r'010\d{7,8}',  # 01012345678
+    ]
+    
+    for pattern in patterns:
+        matches = re.findall(pattern, text)
+        phones.extend(matches)
+    
+    return phones
+
+
+def extract_addresses_from_text(text):
+    """텍스트에서 주소 후보 추출"""
+    candidates = []
+    
+    # 괄호 안의 주소
+    bracket_addrs = re.findall(r'\(([^)]{10,})\)', text)
+    candidates.extend(bracket_addrs)
+    
+    # 한국 주소 키워드 포함 문장
+    addr_keywords = ['시', '구', '동', '로', '길', '번지', '호', '아파트', '빌딩']
+    lines = text.split('\n')
+    
+    for line in lines:
+        if any(keyword in line for keyword in addr_keywords):
+            if len(line.strip()) >= 10:  # 너무 짧은 주소는 제외
+                candidates.append(line.strip())
+    
+    return candidates
+
+
+def extract_order_numbers_from_text(text):
+    """텍스트에서 주문번호 후보 추출"""
+    candidates = []
+    
+    # 주문번호 패턴: A-1234567 형식
+    pattern1 = re.findall(r'[A-Z]-\d{6,}', text)
+    candidates.extend(pattern1)
+    
+    # 주문번호 패턴: ORD-2024-001 형식
+    pattern2 = re.findall(r'[A-Z]{2,}-\d{4,}-\d{3,}', text)
+    candidates.extend(pattern2)
+    
+    # 주문번호 패턴: 20241009001 형식 (날짜+번호)
+    pattern3 = re.findall(r'20\d{6,}', text)
+    candidates.extend(pattern3)
+    
+    return candidates
+
+
+def extract_pages(pdf_path):
+    """
+    PDF에서 모든 페이지의 텍스트 추출 및 정규화
+    
+    Args:
+        pdf_path: PDF 파일 경로
+        
+    Returns:
+        List[PageInfo]: 페이지 정보 리스트
+    """
+    pages = []
+    
+    with pdfplumber.open(pdf_path) as pdf:
+        for i, page in enumerate(pdf.pages):
+            # 텍스트 추출
+            raw_text = page.extract_text() or ""
+            raw_text = remove_special_chars(raw_text)
+            
+            # 이름 후보 추출 및 정규화
+            name_candidates = extract_names_from_text(raw_text)
+            norm_names = [normalize_name(name) for name in name_candidates]
+            norm_names = [n for n in norm_names if n]  # 빈 문자열 제거
+            
+            # 전화번호 추출 및 정규화
+            phone_candidates = extract_phones_from_text(raw_text)
+            norm_phones = [normalize_phone(phone) for phone in phone_candidates]
+            norm_phones = [p for p in norm_phones if p]  # 빈 문자열 제거
+            
+            # 주소 후보 추출 및 정규화
+            addr_candidates = extract_addresses_from_text(raw_text)
+            norm_addrs = [normalize_addr(addr) for addr in addr_candidates]
+            norm_addrs = [a for a in norm_addrs if a]  # 빈 문자열 제거
+            
+            # 주문번호 후보 추출 및 정규화
+            order_candidates = extract_order_numbers_from_text(raw_text)
+            norm_orders = [normalize_order_number(order) for order in order_candidates]
+            norm_orders = [o for o in norm_orders if o]  # 빈 문자열 제거
+            
+            page_info = PageInfo(
+                index=i,
+                raw_text=raw_text,
+                norm_name_candidates=norm_names,
+                norm_phone_list=norm_phones,
+                norm_addr_candidates=norm_addrs,
+                norm_order_candidates=norm_orders
+            )
+            
+            pages.append(page_info)
+    
+    return pages
+
+
+def calc_match_score(excel_name, excel_phone, excel_addr, excel_order, page_info, use_fuzzy=False, threshold=90):
+    """
+    엑셀 행과 PDF 페이지의 매칭 점수 계산
+    
+    Args:
+        excel_name: 정규화된 엑셀 이름
+        excel_phone: 정규화된 엑셀 전화번호
+        excel_addr: 정규화된 엑셀 주소
+        excel_order: 정규화된 엑셀 주문번호
+        page_info: PageInfo 객체
+        use_fuzzy: 유사도 매칭 사용 여부
+        threshold: 유사도 임계값
+        
+    Returns:
+        tuple: (score, reason)
+            - score: 매칭 점수 (0-100)
+            - reason: 매칭 근거 ('name+phone+addr+order', 'fuzzy', 등)
+    """
+    # 정확 일치 확인
+    name_match = excel_name in page_info.norm_name_candidates
+    phone_match = excel_phone in page_info.norm_phone_list
+    addr_match = any(excel_addr in addr or addr in excel_addr 
+                     for addr in page_info.norm_addr_candidates)
+    order_match = excel_order in page_info.norm_order_candidates
+    
+    # 4가지 모두 일치하면 100점
+    if name_match and phone_match and addr_match and order_match:
+        return 100, 'name+phone+addr+order'
+    
+    # 유사도 매칭 사용하지 않으면 0점
+    if not use_fuzzy:
+        return 0, 'no_match'
+    
+    # 유사도 매칭
+    max_score = 0
+    best_reason = 'no_match'
+    
+    # 이름 유사도
+    for page_name in page_info.norm_name_candidates:
+        name_sim = fuzz.ratio(excel_name, page_name)
+        
+        # 전화번호 유사도
+        for page_phone in page_info.norm_phone_list:
+            phone_sim = fuzz.ratio(excel_phone, page_phone)
+            
+            # 주소 유사도
+            for page_addr in page_info.norm_addr_candidates:
+                addr_sim = fuzz.partial_ratio(excel_addr, page_addr)
+                
+                # 주문번호 유사도
+                for page_order in page_info.norm_order_candidates:
+                    order_sim = fuzz.ratio(excel_order, page_order)
+                    
+                    # 평균 유사도 (4가지)
+                    avg_sim = (name_sim + phone_sim + addr_sim + order_sim) / 4
+                    
+                    if avg_sim > max_score:
+                        max_score = avg_sim
+                        best_reason = f'fuzzy(name:{name_sim:.0f},phone:{phone_sim:.0f},addr:{addr_sim:.0f},order:{order_sim:.0f})'
+    
+    # 임계값 이상이면 점수 반환
+    if max_score >= threshold:
+        return max_score, best_reason
+    
+    return 0, 'no_match'
+
+
+def match_rows_to_pages(df, pages, use_fuzzy=False, threshold=90):
+    """
+    엑셀 행과 PDF 페이지를 매칭
+    
+    Args:
+        df: 엑셀 DataFrame (구매자명, 전화번호, 주소, 주문번호 컬럼 포함)
+        pages: List[PageInfo]
+        use_fuzzy: 유사도 매칭 사용 여부
+        threshold: 유사도 임계값
+        
+    Returns:
+        tuple: (assignments, leftover_pages, match_details)
+            - assignments: {excel_row_idx: page_idx, ...}
+            - leftover_pages: [page_idx, ...] (매칭되지 않은 페이지)
+            - match_details: {excel_row_idx: {'page_idx': int, 'score': float, 'reason': str}, ...}
+    """
+    assignments = {}
+    match_details = {}
+    used_pages = set()
+    
+    # 각 엑셀 행에 대해 매칭
+    for row_idx, row in df.iterrows():
+        # 정규화
+        excel_name = normalize_name(row['구매자명'])
+        excel_phone = normalize_phone(row['전화번호'])
+        excel_addr = normalize_addr(row['주소'])
+        excel_order = normalize_order_number(row['주문번호'])
+        
+        # 빈 값 체크
+        if not excel_name or not excel_phone or not excel_addr or not excel_order:
+            match_details[row_idx] = {
+                'page_idx': -1,
+                'score': 0,
+                'reason': 'empty_data'
+            }
+            continue
+        
+        # 모든 페이지와 비교
+        best_page = -1
+        best_score = 0
+        best_reason = 'no_match'
+        
+        for page_info in pages:
+            # 이미 사용된 페이지는 건너뛰기
+            if page_info.index in used_pages:
+                continue
+            
+            score, reason = calc_match_score(
+                excel_name, excel_phone, excel_addr, excel_order,
+                page_info, use_fuzzy, threshold
+            )
+            
+            if score > best_score:
+                best_score = score
+                best_page = page_info.index
+                best_reason = reason
+        
+        # 매칭 결과 저장
+        if best_score > 0:
+            assignments[row_idx] = best_page
+            used_pages.add(best_page)
+            match_details[row_idx] = {
+                'page_idx': best_page,
+                'score': best_score,
+                'reason': best_reason
+            }
+        else:
+            match_details[row_idx] = {
+                'page_idx': -1,
+                'score': 0,
+                'reason': 'no_match'
+            }
+    
+    # 남은 페이지
+    all_pages = set(p.index for p in pages)
+    leftover_pages = sorted(all_pages - used_pages)
+    
+    return assignments, leftover_pages, match_details
+
+
+def reorder_pdf(pdf_path, ordered_indices, out_pdf_path):
+    """
+    PDF 페이지 재정렬
+    
+    Args:
+        pdf_path: 원본 PDF 경로
+        ordered_indices: 정렬된 페이지 인덱스 리스트
+        out_pdf_path: 출력 PDF 경로
+    """
+    reader = PdfReader(pdf_path)
+    writer = PdfWriter()
+    
+    # 지정된 순서대로 페이지 추가
+    for idx in ordered_indices:
+        writer.add_page(reader.pages[idx])
+    
+    # 저장
+    with open(out_pdf_path, 'wb') as f:
+        writer.write(f)
+
+
+# pandas import 추가
+import pandas as pd
+

@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.spec
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+output/
+ordered_*.pdf
+*_match_report.csv
+sorted_*.pdf
+report_*.txt
+*.pdf
+!example*.pdf
+*.xlsx
+!example*.xlsx
+*.xls
+!example*.xls
+
+# Logs
+*.log
+
