@@ -264,22 +264,39 @@ def extract_phones_from_text(text):
     """텍스트에서 전화번호 추출"""
     phones = []
     
-    # 7~11자리 독립된 숫자 모두 추출 (전화번호 가능성)
-    # 예: 27357395 (8자리), 01012345678 (11자리), 1026417075 (10자리)
-    # 주변에 다른 숫자가 없는 독립된 숫자만 추출
-    phone_pattern = r'(?:^|[^\d])(\d{7,11})(?:[^\d]|$)'
-    matches = re.findall(phone_pattern, text)
+    # 1. 010으로 시작하는 전화번호 패턴 (기본)
+    patterns = [
+        r'010[-\s]?\d{3,4}[-\s]?\d{4}',  # 010-1234-5678 또는 010 1234 5678
+        r'010\d{7,8}',  # 01012345678
+    ]
     
-    # 7~11자리 모두 추가 (전화번호 가능성)
-    for match in matches:
-        if len(match) in [7, 8, 9, 10, 11]:
-            phones.append(match)
+    for pattern in patterns:
+        matches = re.findall(pattern, text)
+        phones.extend(matches)
     
-    # 하이픈이나 공백이 포함된 010 번호도 처리
-    # 010-1234-5678 형식
-    hyphen_pattern = r'010[-\s]\d{3,4}[-\s]\d{4}'
-    hyphen_matches = re.findall(hyphen_pattern, text)
-    phones.extend(hyphen_matches)
+    # 2. 10으로 시작하는 9~10자리 (앞의 0이 빠진 경우)
+    # 예: 1026417075, 108302565
+    pattern_10 = r'(?:^|[^\d])(10\d{7,8})(?:[^\d]|$)'
+    matches_10 = re.findall(pattern_10, text)
+    phones.extend(matches_10)
+    
+    # 3. "전화", "연락처", "TEL", "PHONE" 키워드 근처의 7~10자리 숫자
+    # 예: 전화번호: 27357395
+    phone_keywords = ['전화', '연락', 'TEL', 'PHONE', 'HP', 'MOBILE', '핸드폰', '휴대폰', 'CALL']
+    for keyword in phone_keywords:
+        # 키워드 뒤 50자 이내의 7~10자리 숫자
+        pattern = rf'{keyword}[^\d]{{0,50}}?(\d{{7,10}})'
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        phones.extend(matches)
+    
+    # 4. 한 줄에 숫자만 있는 8~10자리 (전화번호 가능성이 높음)
+    # 예: 줄바꿈 후 "27357395" 줄바꿈
+    lines = text.split('\n')
+    for line in lines:
+        line_stripped = line.strip()
+        # 숫자만 있고 8~10자리인 경우
+        if line_stripped.isdigit() and len(line_stripped) in [8, 9, 10]:
+            phones.append(line_stripped)
     
     # 중복 제거
     phones = list(dict.fromkeys(phones))
