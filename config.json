@@ -1,0 +1,26 @@
+{
+  "base_path_settings": {
+    "base_path": "C:\\Users\\one\\Desktop\\구매계약서",
+    "last_used": "2025-10-11T10:21:52.322697",
+    "use_date_subfolder": false,
+    "recent_paths": []
+  },
+  "search_settings": {
+    "base_folder": "C:/temp",
+    "order_pattern": "\\d{15,20}",
+    "recursive_search": true
+  },
+  "print_settings": {
+    "printer_name": "",
+    "copies": 1,
+    "duplex": false,
+    "sumatra_path": "C:\\Users\\one\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe"
+  },
+  "ui_settings": {
+    "window_size": [
+      1000,
+      800
+    ],
+    "remember_last_search": true
+  }
+}

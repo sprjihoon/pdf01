@@ -11,13 +11,20 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QLineEdit, QFileDialog, QTextEdit,
-    QProgressBar, QGroupBox, QMessageBox, QCheckBox, QSpinBox
+    QProgressBar, QGroupBox, QMessageBox, QCheckBox, QSpinBox,
+    QTabWidget, QComboBox, QTableWidget, QTableWidgetItem, QHeaderView,
+    QFrame, QSizePolicy
 )
 from PySide6.QtCore import Qt, QThread, Signal, QSettings
 from PySide6.QtGui import QFont
 
 from io_utils import load_excel, get_output_filenames, save_pdf, save_report, is_text_based_pdf
 from matcher import extract_pages, match_rows_to_pages, reorder_pdf
+from order_searcher import OrderSearcher
+from print_manager import PrintManager
+from order_logger import logger
+from config_manager import config
+import time
 
 
 class ProcessingWorker(QThread):
@@ -184,12 +191,262 @@ class MainWindow(QMainWindow):
         # 설정 관리자 (Windows 레지스트리, macOS/Linux는 적절한 위치에 저장)
         self.settings = QSettings("PDFExcelMatcher", "PathSettings")
         
-        # 중앙 위젯
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
+        # 메인 위젯 및 레이아웃
+        main_widget = QWidget()
+        self.setCentralWidget(main_widget)
+        main_layout = QVBoxLayout(main_widget)
+        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(10, 10, 10, 10)
         
-        # 메인 레이아웃
-        layout = QVBoxLayout(central_widget)
+        # 상단 통합 경로 영역 생성
+        self.create_base_path_section(main_layout)
+        
+        # 탭 위젯 생성
+        self.tab_widget = QTabWidget()
+        main_layout.addWidget(self.tab_widget)
+        
+        # PDF 정렬 탭 생성
+        self.create_pdf_sort_tab()
+        
+        # 주문번호 검색 탭 생성
+        self.create_order_search_tab()
+        
+        # 초기 경로 설정 확인
+        self.check_initial_path()
+    
+    def create_base_path_section(self, parent_layout):
+        """상단 통합 경로 선택 영역 생성"""
+        # 구분선이 있는 프레임
+        path_frame = QFrame()
+        path_frame.setFrameStyle(QFrame.StyledPanel)
+        path_frame.setStyleSheet("""
+            QFrame {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 8px;
+                margin-bottom: 10px;
+            }
+        """)
+        
+        path_layout = QVBoxLayout(path_frame)
+        path_layout.setSpacing(10)
+        
+        # 제목
+        title_layout = QHBoxLayout()
+        title_label = QLabel("📂 통합 작업 경로")
+        title_font = QFont()
+        title_font.setPointSize(12)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
+        title_layout.addWidget(title_label)
+        
+        # 날짜별 폴더 옵션
+        self.date_subfolder_check = QCheckBox("날짜별 하위폴더 사용")
+        self.date_subfolder_check.setToolTip("활성화시 선택한 폴더 아래에 YYYY-MM-DD 폴더를 자동 생성합니다")
+        self.date_subfolder_check.stateChanged.connect(self.on_date_subfolder_changed)
+        title_layout.addStretch()
+        title_layout.addWidget(self.date_subfolder_check)
+        
+        path_layout.addLayout(title_layout)
+        
+        # 경로 선택 영역
+        path_select_layout = QHBoxLayout()
+        
+        # 현재 경로 표시
+        path_select_layout.addWidget(QLabel("현재 경로:"))
+        self.current_path_label = QLabel("경로가 설정되지 않았습니다")
+        self.current_path_label.setStyleSheet("""
+            QLabel {
+                background-color: white;
+                border: 1px solid #ccc;
+                padding: 8px;
+                border-radius: 4px;
+                font-family: 'Consolas', monospace;
+            }
+        """)
+        self.current_path_label.setMinimumHeight(35)
+        path_select_layout.addWidget(self.current_path_label, 1)
+        
+        # 경로 선택 버튼
+        self.select_path_btn = QPushButton("📂 경로 선택")
+        self.select_path_btn.setMinimumSize(100, 35)
+        self.select_path_btn.clicked.connect(self.select_base_path)
+        path_select_layout.addWidget(self.select_path_btn)
+        
+        # 최근 경로 콤보박스
+        self.recent_paths_combo = QComboBox()
+        self.recent_paths_combo.setMinimumWidth(150)
+        self.recent_paths_combo.setToolTip("최근 사용한 경로")
+        self.recent_paths_combo.currentTextChanged.connect(self.on_recent_path_selected)
+        path_select_layout.addWidget(self.recent_paths_combo)
+        
+        path_layout.addLayout(path_select_layout)
+        
+        # 상태 메시지
+        self.path_status_label = QLabel("")
+        self.path_status_label.setStyleSheet("color: #666; font-size: 9pt; margin-top: 5px;")
+        path_layout.addWidget(self.path_status_label)
+        
+        parent_layout.addWidget(path_frame)
+        
+        # 최근 경로 목록 업데이트
+        self.update_recent_paths_combo()
+    
+    def check_initial_path(self):
+        """초기 경로 설정 확인 및 로드"""
+        base_path = config.get_base_path()
+        
+        if base_path:
+            # 기존 경로가 있으면 유효성 검사
+            is_valid, message = config.validate_base_path(base_path)
+            if is_valid:
+                self.update_path_display(base_path)
+                self.path_status_label.setText(f"✅ {message}")
+                self.path_status_label.setStyleSheet("color: #28a745; font-size: 9pt;")
+            else:
+                self.path_status_label.setText(f"⚠️ {message}")
+                self.path_status_label.setStyleSheet("color: #ffc107; font-size: 9pt;")
+                self.show_path_selection_dialog()
+        else:
+            # 경로가 설정되지 않았으면 선택 요청
+            self.show_path_selection_dialog()
+        
+        # 날짜별 폴더 옵션 로드
+        self.date_subfolder_check.setChecked(config.get_use_date_subfolder())
+    
+    def show_path_selection_dialog(self):
+        """경로 선택 대화상자 표시"""
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Information)
+        msg.setWindowTitle("작업 폴더 설정")
+        msg.setText("PDF 매칭 프로그램에 오신 것을 환영합니다!")
+        msg.setInformativeText(
+            "모든 PDF 파일 검색과 결과 저장을 위한 기본 폴더를 선택해주세요.\n"
+            "이 폴더는 다음 용도로 사용됩니다:\n\n"
+            "• PDF 파일 검색\n"
+            "• 매칭 결과 저장 (ordered_*.pdf)\n"
+            "• 리포트 저장 (*.csv)\n"
+            "• 로그 파일 저장\n\n"
+            "한번 설정하면 자동으로 기억됩니다."
+        )
+        msg.setStandardButtons(QMessageBox.Ok)
+        msg.exec()
+        
+        self.select_base_path()
+    
+    def select_base_path(self):
+        """기본 경로 선택"""
+        current_path = config.get_base_path()
+        start_dir = current_path if current_path and os.path.exists(current_path) else os.path.expanduser("~")
+        
+        selected_path = QFileDialog.getExistingDirectory(
+            self, "PDF 작업 폴더 선택", start_dir
+        )
+        
+        if selected_path:
+            # 경로 유효성 검사
+            is_valid, message = config.validate_base_path(selected_path)
+            
+            if is_valid:
+                config.set_base_path(selected_path)
+                self.update_path_display(selected_path)
+                self.update_recent_paths_combo()
+                self.path_status_label.setText(f"✅ {message}")
+                self.path_status_label.setStyleSheet("color: #28a745; font-size: 9pt;")
+                self.log(f"✓ 작업 폴더 설정: {selected_path}")
+                self.search_log(f"✓ 작업 폴더 설정: {selected_path}")
+            else:
+                self.path_status_label.setText(f"❌ {message}")
+                self.path_status_label.setStyleSheet("color: #dc3545; font-size: 9pt;")
+                
+                # 폴더 생성 제안
+                if "존재하지 않습니다" in message:
+                    reply = QMessageBox.question(
+                        self, "폴더 생성", 
+                        f"선택한 폴더가 존재하지 않습니다.\n{selected_path}\n\n폴더를 생성하시겠습니까?",
+                        QMessageBox.Yes | QMessageBox.No
+                    )
+                    
+                    if reply == QMessageBox.Yes:
+                        success, create_message = config.create_base_path(selected_path)
+                        if success:
+                            config.set_base_path(selected_path)
+                            self.update_path_display(selected_path)
+                            self.update_recent_paths_combo()
+                            self.path_status_label.setText(f"✅ {create_message}")
+                            self.path_status_label.setStyleSheet("color: #28a745; font-size: 9pt;")
+                        else:
+                            QMessageBox.critical(self, "오류", create_message)
+                else:
+                    QMessageBox.critical(self, "경로 오류", message)
+    
+    def update_path_display(self, path: str):
+        """경로 표시 업데이트"""
+        if path:
+            # 경로가 너무 길면 축약 표시
+            display_path = path
+            if len(display_path) > 60:
+                display_path = "..." + display_path[-57:]
+            
+            self.current_path_label.setText(display_path)
+            self.current_path_label.setToolTip(path)
+            
+            # 작업 경로 표시 (날짜 폴더 포함 시)
+            working_path = config.get_working_path()
+            if working_path != path:
+                self.path_status_label.setText(f"📁 작업 경로: {working_path}")
+                self.path_status_label.setStyleSheet("color: #17a2b8; font-size: 9pt;")
+        else:
+            self.current_path_label.setText("경로가 설정되지 않았습니다")
+            self.current_path_label.setToolTip("")
+    
+    def update_recent_paths_combo(self):
+        """최근 경로 콤보박스 업데이트"""
+        self.recent_paths_combo.blockSignals(True)
+        self.recent_paths_combo.clear()
+        
+        recent_paths = config.get_recent_paths()
+        if recent_paths:
+            self.recent_paths_combo.addItem("최근 경로 선택...", "")
+            for path in recent_paths:
+                display_name = os.path.basename(path) if os.path.basename(path) else path
+                self.recent_paths_combo.addItem(f"📁 {display_name}", path)
+        
+        self.recent_paths_combo.blockSignals(False)
+    
+    def on_recent_path_selected(self, text):
+        """최근 경로 선택 이벤트"""
+        if not text or text == "최근 경로 선택...":
+            return
+        
+        # 현재 선택된 경로 가져오기
+        selected_path = self.recent_paths_combo.currentData()
+        if selected_path and os.path.exists(selected_path):
+            config.set_base_path(selected_path)
+            self.update_path_display(selected_path)
+            self.update_recent_paths_combo()
+            self.path_status_label.setText("✅ 최근 경로로 변경되었습니다")
+            self.path_status_label.setStyleSheet("color: #28a745; font-size: 9pt;")
+    
+    def on_date_subfolder_changed(self, state):
+        """날짜별 하위폴더 옵션 변경"""
+        use_date = state == Qt.Checked
+        config.set_use_date_subfolder(use_date)
+        
+        # 현재 경로 다시 표시 (작업 경로 변경 반영)
+        current_path = config.get_base_path()
+        if current_path:
+            self.update_path_display(current_path)
+            
+            if use_date:
+                self.search_log("✓ 날짜별 하위폴더 사용 활성화")
+            else:
+                self.search_log("✓ 날짜별 하위폴더 사용 비활성화")
+        
+    def create_pdf_sort_tab(self):
+        """PDF 정렬 탭 생성"""
+        tab_widget = QWidget()
+        layout = QVBoxLayout(tab_widget)
         layout.setSpacing(15)
         
         # 제목
@@ -214,7 +471,7 @@ class MainWindow(QMainWindow):
         excel_layout = QHBoxLayout()
         excel_layout.addWidget(QLabel("엑셀 파일:"))
         self.excel_edit = QLineEdit()
-        self.excel_edit.setPlaceholderText("주문번호 컬럼이 있는 엑셀 파일...")
+        self.excel_edit.setPlaceholderText("주문번호 컬럼이 있는 엑셀 파일 (작업 폴더 기준)...")
         excel_layout.addWidget(self.excel_edit)
         excel_btn = QPushButton("찾아보기")
         excel_btn.clicked.connect(self.browse_excel)
@@ -225,23 +482,20 @@ class MainWindow(QMainWindow):
         pdf_layout = QHBoxLayout()
         pdf_layout.addWidget(QLabel("PDF 파일:"))
         self.pdf_edit = QLineEdit()
-        self.pdf_edit.setPlaceholderText("정렬할 PDF 파일 (텍스트 기반)...")
+        self.pdf_edit.setPlaceholderText("정렬할 PDF 파일 (작업 폴더 기준, 텍스트 기반)...")
         pdf_layout.addWidget(self.pdf_edit)
         pdf_btn = QPushButton("찾아보기")
         pdf_btn.clicked.connect(self.browse_pdf)
         pdf_layout.addWidget(pdf_btn)
         file_layout.addLayout(pdf_layout)
         
-        # 출력 폴더
-        output_layout = QHBoxLayout()
-        output_layout.addWidget(QLabel("출력 폴더:"))
-        self.output_edit = QLineEdit()
-        self.output_edit.setPlaceholderText("결과 파일이 저장될 폴더...")
-        output_layout.addWidget(self.output_edit)
-        output_btn = QPushButton("찾아보기")
-        output_btn.clicked.connect(self.browse_output)
-        output_layout.addWidget(output_btn)
-        file_layout.addLayout(output_layout)
+        # 출력 폴더는 작업 폴더로 자동 설정되므로 제거
+        output_info_layout = QHBoxLayout()
+        output_info_layout.addWidget(QLabel("결과 저장:"))
+        output_info_label = QLabel("작업 폴더에 자동 저장 (ordered_YYYYMMDD.pdf, match_report.csv)")
+        output_info_label.setStyleSheet("color: #666; font-style: italic; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background-color: #f9f9f9;")
+        output_info_layout.addWidget(output_info_label)
+        file_layout.addLayout(output_info_layout)
         
         file_group.setLayout(file_layout)
         layout.addWidget(file_group)
@@ -331,8 +585,158 @@ class MainWindow(QMainWindow):
         # 작업 스레드
         self.worker = None
         
+        # 탭에 추가
+        self.tab_widget.addTab(tab_widget, "📄 PDF 정렬")
+        
         # 저장된 경로 로드
         self.load_saved_paths()
+    
+    def create_order_search_tab(self):
+        """주문번호 검색 탭 생성"""
+        tab_widget = QWidget()
+        layout = QVBoxLayout(tab_widget)
+        layout.setSpacing(15)
+        
+        # 제목
+        title = QLabel("🔍 주문번호 검색 & 인쇄")
+        title_font = QFont()
+        title_font.setPointSize(18)
+        title_font.setBold(True)
+        title.setFont(title_font)
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+        
+        subtitle = QLabel("PDF 파일에서 주문번호를 검색하고 해당 페이지를 인쇄합니다")
+        subtitle.setAlignment(Qt.AlignCenter)
+        subtitle.setStyleSheet("color: #666; font-size: 11pt;")
+        layout.addWidget(subtitle)
+        
+        # 검색 정보 표시 (폴더 선택 불필요 - 통합 경로 사용)
+        folder_group = QGroupBox("1️⃣ 검색 설정")
+        folder_layout = QVBoxLayout()
+        
+        folder_info_layout = QHBoxLayout()
+        folder_info_layout.addWidget(QLabel("검색 대상:"))
+        search_info_label = QLabel("상단에 설정된 작업 폴더에서 PDF 파일 검색")
+        search_info_label.setStyleSheet("color: #666; font-style: italic; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background-color: #f9f9f9;")
+        folder_info_layout.addWidget(search_info_label)
+        folder_layout.addLayout(folder_info_layout)
+        
+        folder_group.setLayout(folder_layout)
+        layout.addWidget(folder_group)
+        
+        # 검색 그룹
+        search_group = QGroupBox("2️⃣ 주문번호 검색")
+        search_layout = QVBoxLayout()
+        
+        # 주문번호 입력
+        order_input_layout = QHBoxLayout()
+        order_input_layout.addWidget(QLabel("주문번호:"))
+        self.order_number_edit = QLineEdit()
+        self.order_number_edit.setPlaceholderText("예: A-1234567")
+        order_input_layout.addWidget(self.order_number_edit)
+        
+        self.search_btn = QPushButton("🔍 검색")
+        self.search_btn.setMinimumHeight(35)
+        self.search_btn.clicked.connect(self.search_order)
+        order_input_layout.addWidget(self.search_btn)
+        search_layout.addLayout(order_input_layout)
+        
+        # 검색 결과 테이블
+        self.search_result_table = QTableWidget()
+        self.search_result_table.setColumnCount(6)
+        self.search_result_table.setHorizontalHeaderLabels([
+            "파일명", "문서날짜", "파일명날짜", "수정시간", "페이지", "선택기준"
+        ])
+        self.search_result_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.search_result_table.setMaximumHeight(150)
+        search_layout.addWidget(self.search_result_table)
+        
+        search_group.setLayout(search_layout)
+        layout.addWidget(search_group)
+        
+        # 인쇄 설정 그룹
+        print_group = QGroupBox("3️⃣ 인쇄 설정")
+        print_layout = QVBoxLayout()
+        
+        # 프린터 선택
+        printer_layout = QHBoxLayout()
+        printer_layout.addWidget(QLabel("프린터:"))
+        self.printer_combo = QComboBox()
+        self.printer_combo.setMinimumWidth(200)
+        printer_layout.addWidget(self.printer_combo)
+        
+        refresh_printer_btn = QPushButton("새로고침")
+        refresh_printer_btn.clicked.connect(self.refresh_printers)
+        printer_layout.addWidget(refresh_printer_btn)
+        printer_layout.addStretch()
+        print_layout.addLayout(printer_layout)
+        
+        # 인쇄 옵션
+        options_layout = QHBoxLayout()
+        
+        options_layout.addWidget(QLabel("매수:"))
+        self.copies_spin = QSpinBox()
+        self.copies_spin.setMinimum(1)
+        self.copies_spin.setMaximum(99)
+        self.copies_spin.setValue(1)
+        options_layout.addWidget(self.copies_spin)
+        
+        self.duplex_check = QCheckBox("양면 인쇄")
+        options_layout.addWidget(self.duplex_check)
+        
+        options_layout.addStretch()
+        print_layout.addLayout(options_layout)
+        
+        print_group.setLayout(print_layout)
+        layout.addWidget(print_group)
+        
+        # 인쇄 버튼
+        self.print_btn = QPushButton("🖨️ 인쇄 실행")
+        self.print_btn.setMinimumHeight(45)
+        self.print_btn.setEnabled(False)
+        self.print_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                font-size: 14pt;
+                font-weight: bold;
+                border-radius: 8px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:disabled {
+                background-color: #BDBDBD;
+            }
+        """)
+        self.print_btn.clicked.connect(self.print_order)
+        layout.addWidget(self.print_btn)
+        
+        # 로그 영역
+        log_group = QGroupBox("4️⃣ 작업 로그")
+        log_layout = QVBoxLayout()
+        
+        self.search_log_text = QTextEdit()
+        self.search_log_text.setReadOnly(True)
+        self.search_log_text.setMaximumHeight(200)
+        self.search_log_text.setStyleSheet("font-family: 'Consolas', monospace; font-size: 9pt;")
+        log_layout.addWidget(self.search_log_text)
+        
+        log_group.setLayout(log_layout)
+        layout.addWidget(log_group)
+        
+        # 탭에 추가
+        self.tab_widget.addTab(tab_widget, "🔍 주문번호 검색")
+        
+        # 초기화
+        self.order_searcher = OrderSearcher()
+        self.print_manager = PrintManager()
+        self.search_result = None
+        
+        # 초기 로그
+        self.search_log("주문번호 검색 기능이 준비되었습니다.")
+        self.refresh_printers()
     
     def load_saved_paths(self):
         """저장된 경로들을 로드하여 UI에 설정"""
@@ -364,11 +768,21 @@ class MainWindow(QMainWindow):
         self.threshold_spin.setEnabled(state == Qt.Checked)
     
     def browse_excel(self):
-        """엑셀 파일 찾아보기"""
-        # 이전 경로가 있으면 해당 디렉토리에서 시작
-        current_path = self.excel_edit.text()
-        start_dir = os.path.dirname(current_path) if current_path and os.path.exists(current_path) else ""
+        """엑셀 파일 찾아보기 (작업 폴더 기준)"""
+        # 작업 폴더에서 시작
+        working_path = config.get_working_path()
         
+        if not working_path:
+            QMessageBox.warning(self, "경로 오류", "먼저 작업 폴더를 설정해주세요.")
+            return
+        
+        # 현재 파일이 있으면 해당 디렉토리, 없으면 작업 폴더
+        current_file = self.excel_edit.text()
+        if current_file and os.path.exists(current_file):
+            start_dir = os.path.dirname(current_file)
+        else:
+            start_dir = working_path
+            
         file_path, _ = QFileDialog.getOpenFileName(
             self, "엑셀 파일 선택", start_dir,
             "Excel Files (*.xlsx *.xls);;All Files (*)"
@@ -379,10 +793,20 @@ class MainWindow(QMainWindow):
             self.log(f"✓ 엑셀 선택: {os.path.basename(file_path)}")
     
     def browse_pdf(self):
-        """PDF 파일 찾아보기"""
-        # 이전 경로가 있으면 해당 디렉토리에서 시작
-        current_path = self.pdf_edit.text()
-        start_dir = os.path.dirname(current_path) if current_path and os.path.exists(current_path) else ""
+        """PDF 파일 찾아보기 (작업 폴더 기준)"""
+        # 작업 폴더에서 시작
+        working_path = config.get_working_path()
+        
+        if not working_path:
+            QMessageBox.warning(self, "경로 오류", "먼저 작업 폴더를 설정해주세요.")
+            return
+        
+        # 현재 파일이 있으면 해당 디렉토리, 없으면 작업 폴더
+        current_file = self.pdf_edit.text()
+        if current_file and os.path.exists(current_file):
+            start_dir = os.path.dirname(current_file)
+        else:
+            start_dir = working_path
         
         file_path, _ = QFileDialog.getOpenFileName(
             self, "PDF 파일 선택", start_dir,
@@ -393,17 +817,7 @@ class MainWindow(QMainWindow):
             self.save_path("pdf_path", file_path)  # 경로 저장
             self.log(f"✓ PDF 선택: {os.path.basename(file_path)}")
     
-    def browse_output(self):
-        """출력 폴더 찾아보기"""
-        # 이전 경로가 있으면 해당 디렉토리에서 시작
-        current_path = self.output_edit.text()
-        start_dir = current_path if current_path and os.path.exists(current_path) else ""
-        
-        folder_path = QFileDialog.getExistingDirectory(self, "출력 폴더 선택", start_dir)
-        if folder_path:
-            self.output_edit.setText(folder_path)
-            self.save_path("output_path", folder_path)  # 경로 저장
-            self.log(f"✓ 출력 폴더: {folder_path}")
+    # browse_output 메서드는 더 이상 사용하지 않음 (통합 경로 사용)
     
     def log(self, message):
         """로그 메시지 추가"""
@@ -413,10 +827,22 @@ class MainWindow(QMainWindow):
     
     def run_processing(self):
         """처리 실행"""
+        # 작업 폴더 확인
+        working_path = config.get_working_path()
+        if not working_path:
+            QMessageBox.warning(self, "설정 오류", "작업 폴더가 설정되지 않았습니다.")
+            return
+        
+        # 작업 폴더 유효성 재확인
+        is_valid, message = config.validate_base_path(working_path)
+        if not is_valid:
+            QMessageBox.warning(self, "경로 오류", f"작업 폴더에 문제가 있습니다:\n{message}")
+            return
+        
         # 입력 검증
         excel_path = self.excel_edit.text().strip()
         pdf_path = self.pdf_edit.text().strip()
-        output_dir = self.output_edit.text().strip()
+        output_dir = working_path  # 작업 폴더를 출력 디렉토리로 사용
         
         if not excel_path or not os.path.exists(excel_path):
             QMessageBox.warning(self, "입력 오류", "유효한 엑셀 파일을 선택하세요.")
@@ -424,10 +850,6 @@ class MainWindow(QMainWindow):
         
         if not pdf_path or not os.path.exists(pdf_path):
             QMessageBox.warning(self, "입력 오류", "유효한 PDF 파일을 선택하세요.")
-            return
-        
-        if not output_dir or not os.path.exists(output_dir):
-            QMessageBox.warning(self, "입력 오류", "유효한 출력 폴더를 선택하세요.")
             return
         
         # 옵션
@@ -487,6 +909,218 @@ class MainWindow(QMainWindow):
         self.log(error_msg)
         
         QMessageBox.critical(self, "오류", error_msg)
+    
+    # ===== 주문번호 검색 탭 관련 메서드들 =====
+    
+    # 검색 폴더 관련 메서드들은 더 이상 필요 없음 (통합 경로 사용)
+    
+    def search_order(self):
+        """주문번호 검색"""
+        order_number = self.order_number_edit.text().strip()
+        
+        if not order_number:
+            QMessageBox.warning(self, "입력 오류", "주문번호를 입력하세요.")
+            return
+        
+        # 작업 폴더 확인
+        working_path = config.get_working_path()
+        if not working_path:
+            QMessageBox.warning(self, "설정 오류", "작업 폴더가 설정되지 않았습니다.")
+            return
+        
+        # 작업 폴더 유효성 확인
+        is_valid, message = config.validate_base_path(working_path)
+        if not is_valid:
+            QMessageBox.warning(self, "경로 오류", f"작업 폴더에 문제가 있습니다:\n{message}")
+            return
+        
+        self.search_btn.setEnabled(False)
+        self.search_log(f"🔍 검색 시작: {order_number}")
+        
+        try:
+            start_time = time.time()
+            
+            # 주문번호 검색
+            search_result = self.order_searcher.search_order_in_folder(working_path, order_number)
+            
+            search_duration = int((time.time() - start_time) * 1000)
+            
+            if search_result:
+                self.search_result = search_result
+                self.display_search_result(search_result)
+                self.print_btn.setEnabled(True)
+                self.search_log(f"✅ 검색 완료: {len(search_result.all_matches)}개 파일에서 발견")
+                
+                # 로그 기록
+                logger.log_search_result(order_number, working_path, search_result, search_duration)
+            else:
+                self.search_result = None
+                self.clear_search_result()
+                self.print_btn.setEnabled(False)
+                self.search_log(f"❌ 검색 실패: '{order_number}'를 찾을 수 없습니다")
+                
+                # 로그 기록
+                logger.log_search_result(order_number, working_path, None, search_duration)
+                
+        except Exception as e:
+            self.search_log(f"❌ 검색 중 오류: {str(e)}")
+            QMessageBox.critical(self, "검색 오류", f"검색 중 오류가 발생했습니다:\n{str(e)}")
+        finally:
+            self.search_btn.setEnabled(True)
+    
+    def display_search_result(self, search_result):
+        """검색 결과를 테이블에 표시"""
+        self.search_result_table.setRowCount(1)
+        
+        best_match = search_result.best_match
+        
+        # 파일명
+        filename = os.path.basename(best_match.file_path)
+        self.search_result_table.setItem(0, 0, QTableWidgetItem(filename))
+        
+        # 문서날짜
+        doc_date = best_match.doc_date.strftime('%Y-%m-%d') if best_match.doc_date else ""
+        self.search_result_table.setItem(0, 1, QTableWidgetItem(doc_date))
+        
+        # 파일명날짜
+        filename_date = best_match.filename_date.strftime('%Y-%m-%d') if best_match.filename_date else ""
+        self.search_result_table.setItem(0, 2, QTableWidgetItem(filename_date))
+        
+        # 수정시간
+        modified_time = best_match.modified_time.strftime('%Y-%m-%d %H:%M')
+        self.search_result_table.setItem(0, 3, QTableWidgetItem(modified_time))
+        
+        # 페이지 범위
+        page_ranges = self.order_searcher.get_page_ranges_str(best_match.page_numbers)
+        self.search_result_table.setItem(0, 4, QTableWidgetItem(page_ranges))
+        
+        # 선택 기준
+        decided_by_text = {
+            'doc_date': '문서날짜',
+            'filename_date': '파일명날짜', 
+            'modified_time': '수정시간'
+        }.get(search_result.decided_by, search_result.decided_by)
+        self.search_result_table.setItem(0, 5, QTableWidgetItem(decided_by_text))
+        
+        # 추가 정보 로그
+        if len(search_result.all_matches) > 1:
+            self.search_log(f"📊 총 {len(search_result.all_matches)}개 파일 중 최신 파일 선택 ({decided_by_text} 기준)")
+    
+    def clear_search_result(self):
+        """검색 결과 테이블 클리어"""
+        self.search_result_table.setRowCount(0)
+    
+    def print_order(self):
+        """주문번호 인쇄"""
+        if not self.search_result:
+            QMessageBox.warning(self, "인쇄 오류", "먼저 주문번호를 검색하세요.")
+            return
+        
+        printer_name = self.printer_combo.currentText()
+        if not printer_name:
+            QMessageBox.warning(self, "인쇄 오류", "프린터를 선택하세요.")
+            return
+        
+        # 인쇄 설정 가져오기
+        copies = self.copies_spin.value()
+        duplex = self.duplex_check.isChecked()
+        
+        best_match = self.search_result.best_match
+        page_ranges = self.order_searcher.get_page_ranges_str(best_match.page_numbers)
+        
+        self.print_btn.setEnabled(False)
+        self.search_log(f"🖨️ 인쇄 시작: {os.path.basename(best_match.file_path)} 페이지 {page_ranges}")
+        
+        try:
+            start_time = time.time()
+            
+            # 인쇄 실행
+            success = self.print_manager.print_pages(
+                pdf_path=best_match.file_path,
+                page_ranges=page_ranges,
+                printer_name=printer_name,
+                copies=copies,
+                duplex=duplex
+            )
+            
+            print_duration = int((time.time() - start_time) * 1000)
+            
+            if success:
+                self.search_log(f"✅ 인쇄 완료: {printer_name}에서 {copies}매 출력")
+                QMessageBox.information(self, "인쇄 완료", 
+                    f"인쇄가 완료되었습니다.\n\n"
+                    f"파일: {os.path.basename(best_match.file_path)}\n"
+                    f"페이지: {page_ranges}\n"
+                    f"매수: {copies}매\n"
+                    f"프린터: {printer_name}")
+            else:
+                self.search_log(f"❌ 인쇄 실패")
+                QMessageBox.critical(self, "인쇄 실패", "인쇄 중 오류가 발생했습니다.")
+            
+            # 로그 기록
+            logger.log_print_result(
+                order_number=self.search_result.order_number,
+                file_path=best_match.file_path,
+                page_ranges=page_ranges,
+                printer_name=printer_name,
+                copies=copies,
+                duplex=duplex,
+                success=success,
+                print_duration_ms=print_duration
+            )
+            
+        except Exception as e:
+            error_msg = str(e)
+            self.search_log(f"❌ 인쇄 중 오류: {error_msg}")
+            QMessageBox.critical(self, "인쇄 오류", f"인쇄 중 오류가 발생했습니다:\n{error_msg}")
+            
+            # 오류 로그 기록
+            logger.log_print_result(
+                order_number=self.search_result.order_number,
+                file_path=best_match.file_path,
+                page_ranges=page_ranges,
+                printer_name=printer_name,
+                copies=copies,
+                duplex=duplex,
+                success=False,
+                error_message=error_msg
+            )
+            
+        finally:
+            self.print_btn.setEnabled(True)
+    
+    def refresh_printers(self):
+        """프린터 목록 새로고침"""
+        try:
+            self.printer_combo.clear()
+            
+            # 사용 가능한 프린터 목록 가져오기
+            printers = self.print_manager.get_available_printers()
+            
+            if printers:
+                self.printer_combo.addItems(printers)
+                
+                # 기본 프린터 선택
+                default_printer = self.print_manager.get_default_printer()
+                if default_printer and default_printer in printers:
+                    self.printer_combo.setCurrentText(default_printer)
+                
+                self.search_log(f"✓ {len(printers)}개 프린터 발견")
+            else:
+                self.search_log("⚠️ 사용 가능한 프린터가 없습니다")
+                
+        except Exception as e:
+            self.search_log(f"❌ 프린터 목록 가져오기 실패: {str(e)}")
+    
+    def search_log(self, message: str):
+        """검색 로그 메시지 추가"""
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%H:%M:%S')
+        self.search_log_text.append(f"[{timestamp}] {message}")
+        
+        # 스크롤을 맨 아래로
+        scrollbar = self.search_log_text.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
 
 
 def main():
