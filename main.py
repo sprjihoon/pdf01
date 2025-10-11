@@ -738,21 +738,23 @@ class MainWindow(QMainWindow):
         
         # 주문번호 입력 및 검색
         order_input_layout = QHBoxLayout()
+        order_input_layout.setSpacing(6)
         order_input_layout.addWidget(QLabel("주문번호:"))
         
         self.order_number_edit = QLineEdit()
         self.order_number_edit.setPlaceholderText("예: 800017 (뒷자리만 입력)")
+        self.order_number_edit.setFixedWidth(500)  # 500px로 고정
         self.order_number_edit.returnPressed.connect(self.search_order)  # Enter 키 지원
         order_input_layout.addWidget(self.order_number_edit)
         
-        # 검색 버튼
+        # 검색 버튼 (입력창 바로 옆)
         self.search_btn = QPushButton("🔍 검색")
         self.search_btn.setMinimumHeight(35)
         self.search_btn.setMinimumWidth(80)
         self.search_btn.clicked.connect(self.search_order)
         order_input_layout.addWidget(self.search_btn)
         
-        # 검색 중지 버튼 (검색 버튼 옆에)
+        # 검색 중지 버튼 (검색 버튼 바로 옆)
         self.stop_search_btn = QPushButton("⏹️ 중지")
         self.stop_search_btn.setMinimumHeight(35)
         self.stop_search_btn.setMinimumWidth(80)
@@ -774,6 +776,7 @@ class MainWindow(QMainWindow):
         """)
         self.stop_search_btn.clicked.connect(self.stop_search)
         order_input_layout.addWidget(self.stop_search_btn)
+        order_input_layout.addStretch()  # 오른쪽 여백
         search_layout.addLayout(order_input_layout)
         
         # 검색 결과 테이블 (공간 확대)
