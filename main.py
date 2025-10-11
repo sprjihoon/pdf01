@@ -342,12 +342,13 @@ class MainWindow(QMainWindow):
         self.select_path_btn.clicked.connect(self.select_base_path)
         title_layout.addWidget(self.select_path_btn)
         
-        # 상태 메시지 박스 (버튼과 정확히 동일한 높이)
-        self.path_status_label = QLabel("")
+        # 상태 메시지 박스 (버튼과 동일한 스타일로 QPushButton 사용)
+        self.path_status_label = QPushButton("")
         self.path_status_label.setFixedSize(70, 32)
-        self.path_status_label.setAlignment(Qt.AlignCenter)
+        self.path_status_label.setEnabled(False)  # 클릭 불가능
         self.path_status_label.setStyleSheet(
-            "border: 1px solid #ddd; border-radius: 3px; background: #fff; font-size: 9pt; padding: 0px;"
+            "QPushButton { font-size: 9pt; border: 1px solid #ccc; background: #f8f8f8; }"
+            "QPushButton:disabled { color: #28a745; font-weight: bold; }"
         )
         title_layout.addWidget(self.path_status_label)
         
@@ -398,11 +399,17 @@ class MainWindow(QMainWindow):
                 self.update_path_display(base_path)
                 self.path_status_label.setText("✓ 유효")
                 self.path_status_label.setToolTip(message)
-                self.path_status_label.setStyleSheet("border: 1px solid #ddd; border-radius: 3px; background: #fff; font-size: 9pt; color: #28a745; font-weight: bold;")
+                self.path_status_label.setStyleSheet(
+                    "QPushButton { font-size: 9pt; border: 1px solid #ccc; background: #f8f8f8; }"
+                    "QPushButton:disabled { color: #28a745; font-weight: bold; }"
+                )
             else:
                 self.path_status_label.setText("⚠ 확인")
                 self.path_status_label.setToolTip(message)
-                self.path_status_label.setStyleSheet("border: 1px solid #ddd; border-radius: 3px; background: #fff; font-size: 9pt; color: #ffc107; font-weight: bold;")
+                self.path_status_label.setStyleSheet(
+                    "QPushButton { font-size: 9pt; border: 1px solid #ccc; background: #f8f8f8; }"
+                    "QPushButton:disabled { color: #ffc107; font-weight: bold; }"
+                )
                 self.show_path_selection_dialog()
         else:
             # 경로가 설정되지 않았으면 선택 요청
@@ -450,13 +457,19 @@ class MainWindow(QMainWindow):
                 self.update_recent_paths_combo()
                 self.path_status_label.setText("✓ 유효")
                 self.path_status_label.setToolTip(message)
-                self.path_status_label.setStyleSheet("border: 1px solid #ddd; border-radius: 3px; background: #fff; font-size: 9pt; color: #28a745; font-weight: bold;")
+                self.path_status_label.setStyleSheet(
+                    "QPushButton { font-size: 9pt; border: 1px solid #ccc; background: #f8f8f8; }"
+                    "QPushButton:disabled { color: #28a745; font-weight: bold; }"
+                )
                 self.log(f"✓ 작업 폴더 설정: {selected_path}")
                 self.search_log(f"✓ 작업 폴더 설정: {selected_path}")
             else:
                 self.path_status_label.setText("✗ 오류")
                 self.path_status_label.setToolTip(message)
-                self.path_status_label.setStyleSheet("border: 1px solid #ddd; border-radius: 3px; background: #fff; font-size: 9pt; color: #dc3545; font-weight: bold;")
+                self.path_status_label.setStyleSheet(
+                    "QPushButton { font-size: 9pt; border: 1px solid #ccc; background: #f8f8f8; }"
+                    "QPushButton:disabled { color: #dc3545; font-weight: bold; }"
+                )
                 
                 # 폴더 생성 제안
                 if "존재하지 않습니다" in message:
@@ -474,7 +487,10 @@ class MainWindow(QMainWindow):
                             self.update_recent_paths_combo()
                             self.path_status_label.setText("✓ 유효")
                             self.path_status_label.setToolTip(create_message)
-                            self.path_status_label.setStyleSheet("border: 1px solid #ddd; border-radius: 3px; background: #fff; font-size: 9pt; color: #28a745; font-weight: bold;")
+                            self.path_status_label.setStyleSheet(
+                                "QPushButton { font-size: 9pt; border: 1px solid #ccc; background: #f8f8f8; }"
+                                "QPushButton:disabled { color: #28a745; font-weight: bold; }"
+                            )
                         else:
                             QMessageBox.critical(self, "오류", create_message)
                 else:
