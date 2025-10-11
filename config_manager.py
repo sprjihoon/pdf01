@@ -31,7 +31,7 @@ class ConfigManager:
             },
             "search_settings": {
                 "base_folder": "",  # PDF 검색 기본 폴더 (호환성 유지)
-                "order_pattern": r"\d{15,20}",  # 주문번호 정규식 (15-20자리 숫자)
+                "order_pattern": r"\d{13}",  # 주문번호 정규식 (13자리 숫자)
                 "recursive_search": True  # 하위 폴더까지 검색
             },
             "print_settings": {

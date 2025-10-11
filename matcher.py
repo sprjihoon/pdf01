@@ -211,10 +211,10 @@ def normalize_addr(text):
 
 def normalize_order_number(text):
     """
-    주문번호 정규화
-    - 숫자만 추출 후 형태 통일
-    - PDF: 0100012025100100075 → 100012025100100075 (앞자리 0 제거)
-    - 엑셀: 100012025100900021 → 100012025100900021 (그대로)
+    주문번호 정규화 - 13자리 기준
+    - 긴 주문번호에서 마지막 13자리만 추출
+    - 예: 100012025100900021 → 2025100900021 (13자리)
+    -     0100012025100100075 → 2025100100075 (13자리)
     """
     if not text or pd.isna(text):
         return ""
@@ -225,10 +225,11 @@ def normalize_order_number(text):
     # 숫자만 추출
     result = re.sub(r'[^0-9]', '', text)
     
-    # 앞자리 0 제거 (010으로 시작하는 경우 01 제거)
-    if result.startswith('01') and len(result) >= 18:
-        result = result[1:]  # 맨 앞의 0 하나만 제거
+    # 13자리 이상이면 마지막 13자리만 사용
+    if len(result) >= 13:
+        result = result[-13:]  # 마지막 13자리
     
+    # 13자리 미만이면 그대로 반환
     return result
 
 
@@ -329,12 +330,20 @@ def extract_order_numbers_from_text(text):
     """텍스트에서 주문번호 후보 추출"""
     candidates = []
     
-    # 주요 패턴: 15-20자리 긴 숫자 (실제 데이터 형태)
-    # 예: 0100012025100100075, 100012025100900021
-    pattern1 = re.findall(r'\d{15,20}', text)
+    # 주요 패턴: 13자리 주문번호 (2025100600005 형태)
+    # 긴 숫자에서 13자리 부분 추출
+    long_numbers = re.findall(r'\d{15,20}', text)
+    for num in long_numbers:
+        # 긴 숫자에서 13자리 부분 추출 (뒤에서 13자리)
+        if len(num) >= 13:
+            order_candidate = num[-13:]  # 마지막 13자리
+            candidates.append(order_candidate)
+    
+    # 직접 13자리 숫자 패턴
+    pattern1 = re.findall(r'\d{13}', text)
     candidates.extend(pattern1)
     
-    # 호환성을 위한 기존 패턴들 (필요시)
+    # 호환성을 위한 기존 패턴들
     # A-1234567 형식
     pattern2 = re.findall(r'[A-Z]-\d{6,}', text)
     candidates.extend(pattern2)
@@ -342,10 +351,6 @@ def extract_order_numbers_from_text(text):
     # ORD-2024-001 형식  
     pattern3 = re.findall(r'[A-Z]{2,}-\d{4,}-\d{3,}', text)
     candidates.extend(pattern3)
-    
-    # 날짜+번호 형식
-    pattern4 = re.findall(r'20\d{6,}', text)
-    candidates.extend(pattern4)
     
     return candidates
 
