@@ -7,10 +7,12 @@ PDF 인쇄 관리
 import os
 import subprocess
 import sys
+import tempfile
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 import win32print
 import win32api
+from pypdf import PdfReader, PdfWriter
 from config_manager import config
 
 
@@ -70,7 +72,7 @@ class PrintManager:
                    duplex: bool = False,
                    silent: bool = True) -> bool:
         """
-        PDF의 특정 페이지들을 인쇄
+        PDF의 특정 페이지들을 인쇄 - 임시 PDF 생성 방식
         
         Args:
             pdf_path: PDF 파일 경로
@@ -98,7 +100,121 @@ class PrintManager:
         if not printer_name:
             raise RuntimeError("사용할 프린터를 찾을 수 없습니다.")
         
-        # SumatraPDF 명령어 구성
+        # 페이지 범위가 있으면 임시 PDF 생성 후 인쇄
+        if page_ranges and page_ranges != "all":
+            temp_pdf_path = self._create_temp_pdf(pdf_path, page_ranges)
+            if temp_pdf_path:
+                try:
+                    # 임시 PDF 전체 인쇄 (페이지 범위 지정 없이)
+                    result = self._print_whole_pdf(temp_pdf_path, printer_name, copies, duplex, silent)
+                    return result
+                finally:
+                    # 임시 파일 삭제
+                    try:
+                        os.unlink(temp_pdf_path)
+                    except:
+                        pass
+            else:
+                print("Temp PDF creation failed - trying original method")
+        
+        # 기본 방식: SumatraPDF 페이지 범위 지정
+        return self._print_with_page_range(pdf_path, page_ranges, printer_name, copies, duplex, silent)
+    
+    def _create_temp_pdf(self, pdf_path: str, page_ranges: str) -> Optional[str]:
+        """특정 페이지들만 포함한 임시 PDF 생성"""
+        try:
+            # 페이지 번호 파싱
+            page_numbers = self._parse_page_ranges(page_ranges)
+            if not page_numbers:
+                return None
+            
+            print(f"Creating temp PDF with pages: {page_numbers}")
+            
+            # 원본 PDF 읽기
+            reader = PdfReader(pdf_path)
+            total_pages = len(reader.pages)
+            
+            # 페이지 번호 유효성 검사 (1-based → 0-based)
+            valid_pages = []
+            for page_num in page_numbers:
+                if 1 <= page_num <= total_pages:
+                    valid_pages.append(page_num - 1)  # 0-based 인덱스
+                    
+            if not valid_pages:
+                print(f"No valid pages: {page_numbers}")
+                return None
+            
+            # 새 PDF 생성
+            writer = PdfWriter()
+            for page_idx in valid_pages:
+                writer.add_page(reader.pages[page_idx])
+            
+            # 임시 파일로 저장
+            temp_fd, temp_path = tempfile.mkstemp(suffix='.pdf', prefix='print_')
+            os.close(temp_fd)
+            
+            with open(temp_path, 'wb') as temp_file:
+                writer.write(temp_file)
+            
+            print(f"Temp PDF created: {temp_path}")
+            return temp_path
+            
+        except Exception as e:
+            print(f"Temp PDF creation failed: {e}")
+            return None
+    
+    def _parse_page_ranges(self, page_ranges: str) -> List[int]:
+        """페이지 범위 문자열을 페이지 번호 리스트로 변환"""
+        page_numbers = []
+        
+        try:
+            for part in page_ranges.split(','):
+                part = part.strip()
+                if '-' in part:
+                    # 범위: "3-7"
+                    start, end = map(int, part.split('-', 1))
+                    page_numbers.extend(range(start, end + 1))
+                else:
+                    # 단일 페이지: "5"
+                    page_numbers.append(int(part))
+                    
+            return sorted(set(page_numbers))  # 중복 제거 및 정렬
+            
+        except Exception as e:
+            print(f"Page range parsing failed: {e}")
+            return []
+    
+    def _print_whole_pdf(self, pdf_path: str, printer_name: str, copies: int, duplex: bool, silent: bool) -> bool:
+        """전체 PDF 인쇄 (페이지 범위 지정 없이)"""
+        cmd = [self.sumatra_path]
+        
+        if silent:
+            cmd.append("-silent")
+        
+        # 프린터 지정
+        cmd.extend(["-print-to", printer_name])
+        
+        # 인쇄 설정 (페이지 범위 제외)
+        print_settings = []
+        
+        # 매수
+        if copies > 1:
+            print_settings.append(f"copies:{copies}")
+        
+        # 양면 인쇄
+        if duplex:
+            print_settings.append("duplex")
+        
+        if print_settings:
+            cmd.extend(["-print-settings", ",".join(print_settings)])
+        
+        # PDF 파일 경로
+        cmd.append(pdf_path)
+        
+        return self._execute_sumatra_command(cmd)
+    
+    def _print_with_page_range(self, pdf_path: str, page_ranges: str, printer_name: str, copies: int, duplex: bool, silent: bool) -> bool:
+        """기존 방식: 페이지 범위 지정 인쇄"""
         cmd = [self.sumatra_path]
         
         if silent:
@@ -128,19 +244,33 @@ class PrintManager:
         # PDF 파일 경로
         cmd.append(pdf_path)
         
+        return self._execute_sumatra_command(cmd)
+    
+    def _execute_sumatra_command(self, cmd: List[str]) -> bool:
+        """SumatraPDF 명령 실행"""
+        
         try:
+            # 디버깅: 실행할 명령어 출력
+            cmd_str = " ".join([f'"{arg}"' if " " in arg else arg for arg in cmd])
+            print(f"SumatraPDF command:")
+            print(f"   {cmd_str}")
+            
             # SumatraPDF 실행
             result = subprocess.run(cmd, 
                                   capture_output=True, 
                                   text=True, 
                                   timeout=60)
             
+            print(f"SumatraPDF result code: {result.returncode}")
+            if result.stdout:
+                print(f"   출력: {result.stdout}")
+            if result.stderr:
+                print(f"   오류: {result.stderr}")
+            
             if result.returncode == 0:
                 return True
             else:
                 print(f"인쇄 실패 (코드: {result.returncode})")
-                if result.stderr:
-                    print(f"오류: {result.stderr}")
                 return False
                 
         except subprocess.TimeoutExpired:

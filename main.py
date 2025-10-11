@@ -1217,6 +1217,10 @@ class MainWindow(QMainWindow):
         copies = self.copies_spin.value()
         duplex = self.duplex_check.isChecked()
         
+        # 디버깅 정보
+        self.search_log(f"🔍 디버그: 페이지 번호 리스트 = {best_match.page_numbers}")
+        self.search_log(f"🔍 디버그: 페이지 범위 문자열 = '{page_ranges}'")
+        
         reply = QMessageBox.question(
             self, "인쇄 확인", 
             f"다음 내용으로 인쇄하시겠습니까?\n\n"
@@ -1224,7 +1228,8 @@ class MainWindow(QMainWindow):
             f"📄 페이지: {page_ranges}\n"
             f"🖨️ 프린터: {printer_name}\n"
             f"📰 매수: {copies}매\n"
-            f"📋 양면: {'예' if duplex else '아니오'}",
+            f"📋 양면: {'예' if duplex else '아니오'}\n\n"
+            f"🔍 디버그: 실제 페이지 번호 = {best_match.page_numbers}",
             QMessageBox.Yes | QMessageBox.No
         )
         
