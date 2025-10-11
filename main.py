@@ -328,27 +328,31 @@ class MainWindow(QMainWindow):
         # 경로 선택 영역을 세로 레이아웃으로 변경 (더 넓은 공간)
         path_info_layout = QVBoxLayout()
         
-        # 상단: 현재 경로 표시 (전체 폭 사용)
-        current_path_layout = QHBoxLayout()
-        current_path_layout.addWidget(QLabel("현재 경로:"))
+        # 상단: 현재 경로 표시 (완전 개선된 레이아웃)
+        current_path_layout = QVBoxLayout()  # 세로로 변경하여 더 넓은 공간
+        
+        path_label = QLabel("현재 경로:")
+        path_label.setStyleSheet("font-weight: bold; margin-bottom: 5px;")
+        current_path_layout.addWidget(path_label)
         
         self.current_path_label = QLabel("경로가 설정되지 않았습니다")
         self.current_path_label.setStyleSheet("""
             QLabel {
                 background-color: white;
-                border: 1px solid #ccc;
-                padding: 10px;
-                border-radius: 4px;
+                border: 2px solid #2196F3;
+                padding: 12px;
+                border-radius: 6px;
                 font-family: 'Consolas', monospace;
                 font-size: 10pt;
-                min-width: 500px;
+                color: #333;
+                font-weight: normal;
             }
         """)
-        self.current_path_label.setMinimumHeight(40)
+        self.current_path_label.setMinimumHeight(45)
         self.current_path_label.setWordWrap(False)
         self.current_path_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.current_path_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        current_path_layout.addWidget(self.current_path_label, 1)
+        current_path_layout.addWidget(self.current_path_label)
         path_info_layout.addLayout(current_path_layout)
         
         # 하단: 버튼들
@@ -476,18 +480,18 @@ class MainWindow(QMainWindow):
             # 경로 축약 로직 개선
             display_path = path
             
-            # 경로 축약 로직을 더욱 관대하게 수정 (더 긴 경로 허용)
-            if len(display_path) > 120:  # 120자까지 허용 (더욱 확장)
+            # 경로 축약을 최대한 피함 (200자까지 전체 표시)
+            if len(display_path) > 200:  # 200자까지 허용 (최대한 확장)
                 parts = display_path.split('\\')
-                if len(parts) > 4:
-                    # 드라이브:\...\마지막3개폴더 형태로 축약
-                    display_path = f"{parts[0]}\\...\\{parts[-3]}\\{parts[-2]}\\{parts[-1]}"
+                if len(parts) > 5:
+                    # 첫 부분과 마지막 부분만 표시
+                    display_path = f"{parts[0]}\\{parts[1]}\\...\\{parts[-2]}\\{parts[-1]}"
                 elif len(parts) > 3:
-                    # 드라이브:\...\마지막2개폴더 형태로 축약
+                    # 드라이브:\...\마지막2개폴더
                     display_path = f"{parts[0]}\\...\\{parts[-2]}\\{parts[-1]}"
                 else:
-                    # 단순 축약 (더 많이 표시)
-                    display_path = "..." + display_path[-117:]
+                    # 거의 전체 표시
+                    display_path = "..." + display_path[-147:]
             
             self.current_path_label.setText(display_path)
             self.current_path_label.setToolTip(f"전체 경로: {path}")

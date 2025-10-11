@@ -165,11 +165,24 @@ class OrderSearcher:
                 for page_num, page in enumerate(pdf.pages[:check_pages], 1):
                     text = page.extract_text() or ""
                     
-                    # 주문번호 검색 (정규화된 형태로)
+                    # 주문번호 검색 (부분 매칭 지원)
                     extracted_orders = extract_order_numbers_from_text(text)
                     normalized_orders = [normalize_order_number(x) for x in extracted_orders]
                     
-                    if order_number in normalized_orders:
+                    # 부분 매칭으로 변경 (정확 매칭 + 포함 매칭)
+                    found_match = False
+                    for pdf_order in normalized_orders:
+                        # 1. 정확 매칭
+                        if order_number == pdf_order:
+                            found_match = True
+                            break
+                        # 2. 부분 매칭 (6자리 이상일 때)
+                        elif (len(order_number) >= 6 and len(pdf_order) >= 6):
+                            if order_number in pdf_order or pdf_order in order_number:
+                                found_match = True
+                                break
+                    
+                    if found_match:
                         matching_pages.append(page_num)
                     
                     # 문서 날짜 추출 (첫 번째 페이지에서만)
