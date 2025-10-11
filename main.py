@@ -332,29 +332,30 @@ class MainWindow(QMainWindow):
         title_font.setPointSize(10)
         title_font.setBold(True)
         title_label.setFont(title_font)
-        title_label.setFixedHeight(30)
+        title_label.setFixedHeight(32)
         title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         title_layout.addWidget(title_label)
         
         # 경로선택 버튼
         self.select_path_btn = QPushButton("경로 선택")
-        self.select_path_btn.setFixedSize(80, 30)
+        self.select_path_btn.setFixedSize(80, 32)
         self.select_path_btn.clicked.connect(self.select_base_path)
         title_layout.addWidget(self.select_path_btn)
         
-        # 상태 메시지 박스
+        # 상태 메시지 박스 (버튼과 정확히 동일한 높이)
         self.path_status_label = QLabel("")
-        self.path_status_label.setFixedSize(70, 30)
+        self.path_status_label.setFixedSize(70, 32)
         self.path_status_label.setAlignment(Qt.AlignCenter)
         self.path_status_label.setStyleSheet(
-            "border: 1px solid #ddd; border-radius: 3px; background: #fff; font-size: 9pt;"
+            "border: 1px solid #ddd; border-radius: 3px; background: #fff; font-size: 9pt; padding: 0px;"
         )
         title_layout.addWidget(self.path_status_label)
         
-        # 날짜별 폴더 옵션
+        # 날짜별 폴더 옵션 (버튼과 정확히 동일한 높이)
         self.date_subfolder_check = QCheckBox("날짜별 하위폴더")
         self.date_subfolder_check.setToolTip("활성화시 선택한 폴더 아래에 YYYY-MM-DD 폴더를 자동 생성합니다")
-        self.date_subfolder_check.setFixedHeight(30)
+        self.date_subfolder_check.setFixedHeight(32)
+        self.date_subfolder_check.setStyleSheet("QCheckBox { padding: 0px; margin: 0px; }")
         self.date_subfolder_check.stateChanged.connect(self.on_date_subfolder_changed)
         title_layout.addStretch()
         title_layout.addWidget(self.date_subfolder_check)
@@ -368,15 +369,16 @@ class MainWindow(QMainWindow):
         
         current_path_text_label = QLabel("현재 경로:")
         current_path_text_label.setFixedWidth(65)
+        current_path_text_label.setFixedHeight(32)
         current_path_text_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         path_display_layout.addWidget(current_path_text_label)
         
-        # 경로 입력창 (읽기 전용)
+        # 경로 입력창 (읽기 전용, 버튼과 동일한 높이)
         self.current_path_label = QLineEdit()
         self.current_path_label.setText("경로가 설정되지 않았습니다")
         self.current_path_label.setReadOnly(True)
         self.current_path_label.setPlaceholderText("작업 폴더 경로가 여기에 표시됩니다...")
-        self.current_path_label.setFixedHeight(30)
+        self.current_path_label.setFixedHeight(32)
         path_display_layout.addWidget(self.current_path_label, 1)
         
         path_layout.addLayout(path_display_layout)
