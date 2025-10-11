@@ -211,10 +211,11 @@ def normalize_addr(text):
 
 def normalize_order_number(text):
     """
-    주문번호 정규화 - 13자리 기준
-    - 긴 주문번호에서 마지막 13자리만 추출
-    - 예: 100012025100900021 → 2025100900021 (13자리)
-    -     0100012025100100075 → 2025100100075 (13자리)
+    주문번호 정규화 - 뒷자리 10자리 기준
+    - 긴 주문번호에서 마지막 10자리만 추출
+    - 예: 100012025100900021 → 100900021 (뒷자리 9자리, 앞에 0 추가하여 10자리)
+    -     0100012025100100075 → 100100075 (뒷자리 9자리, 앞에 0 추가하여 10자리)  
+    -     2025100800017 → 100800017 (뒷자리 9자리, 앞에 0 추가하여 10자리)
     """
     if not text or pd.isna(text):
         return ""
@@ -225,11 +226,13 @@ def normalize_order_number(text):
     # 숫자만 추출
     result = re.sub(r'[^0-9]', '', text)
     
-    # 13자리 이상이면 마지막 13자리만 사용
-    if len(result) >= 13:
-        result = result[-13:]  # 마지막 13자리
+    # 10자리 이상이면 마지막 10자리만 사용
+    if len(result) >= 10:
+        result = result[-10:]  # 마지막 10자리
+    elif len(result) >= 9:
+        # 9자리면 앞에 0 추가해서 10자리 만들기
+        result = '0' + result
     
-    # 13자리 미만이면 그대로 반환
     return result
 
 
@@ -327,56 +330,39 @@ def extract_addresses_from_text(text):
 
 
 def extract_order_numbers_from_text(text):
-    """텍스트에서 주문번호 후보 추출 - 정확한 13자리 주문번호 우선"""
+    """텍스트에서 주문번호 후보 추출 - 뒷자리 10자리 기준"""
     
-    # 전체 텍스트에서 13자리 형태의 주문번호 직접 카운트
-    # 2025로 시작하는 13자리 숫자를 우선으로 찾기
-    order_candidates = []
+    # 모든 숫자 패턴에서 주문번호 후보 추출
+    # 뒷자리 10자리로 정규화하여 매칭
+    all_candidates = []
     
-    # 1. 2025로 시작하는 13자리 숫자 우선 (실제 주문번호 형태)
-    year_based_orders = re.findall(r'2025\d{9}', text)
-    
-    # 빈도 계산
-    order_frequency = {}
-    for order in year_based_orders:
-        order_frequency[order] = order_frequency.get(order, 0) + 1
-    
-    # 2. 다른 13자리 패턴들도 추가
-    all_13digit = re.findall(r'\d{13}', text)
-    for order in all_13digit:
-        if order not in order_frequency:
-            order_frequency[order] = order_frequency.get(order, 0) + 1
-        else:
-            order_frequency[order] += 1
-    
-    # 3. 긴 숫자에서 13자리 추출 (보조)
+    # 1. 긴 숫자들 (15-20자리) - 가장 정확한 소스
     long_numbers = re.findall(r'\d{15,20}', text)
-    for num in long_numbers:
-        if len(num) >= 13:
-            # 뒤에서 13자리
-            order_candidate = num[-13:]
-            if order_candidate.startswith('2025'):  # 2025년 주문만
-                order_frequency[order_candidate] = order_frequency.get(order_candidate, 0) + 1
+    all_candidates.extend(long_numbers)
     
-    # 4. 빈도순으로 정렬된 13자리 주문번호들
-    if order_frequency:
-        sorted_13digit = sorted(order_frequency.items(), key=lambda x: x[1], reverse=True)
-        result_candidates = [order for order, freq in sorted_13digit]
-    else:
-        result_candidates = []
+    # 2. 13자리 숫자들
+    digits_13 = re.findall(r'\d{13}', text)
+    all_candidates.extend(digits_13)
     
-    # 5. 호환성을 위한 기존 패턴들 추가 (후순위)
+    # 3. 10자리 숫자들
+    digits_10 = re.findall(r'\d{10}', text)
+    all_candidates.extend(digits_10)
+    
+    # 4. 호환성을 위한 기존 패턴들
     legacy_patterns = []
     legacy_patterns.extend(re.findall(r'[A-Z]-\d{6,}', text))
     legacy_patterns.extend(re.findall(r'[A-Z]{2,}-\d{4,}-\d{3,}', text))
+    all_candidates.extend(legacy_patterns)
     
-    # 중복 제거하며 최종 결과 구성
-    final_result = []
-    for candidate in result_candidates + legacy_patterns:
-        if candidate not in final_result:
-            final_result.append(candidate)
+    # 중복 제거
+    unique_candidates = []
+    seen = set()
+    for candidate in all_candidates:
+        if candidate not in seen:
+            unique_candidates.append(candidate)
+            seen.add(candidate)
     
-    return final_result
+    return unique_candidates
 
 
 def extract_pages(pdf_path):

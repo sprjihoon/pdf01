@@ -1,3 +1,9 @@
 ﻿timestamp,order_no,search_folder,found,used_file,doc_date,filename_date,modified_time,page_ranges,decided_by,total_matches,search_duration_ms
 2025-10-11 10:34:50,0100012025100900005,C:\Users\one\Desktop\구매계약서,Y,C:\Users\one\Desktop\구매계약서\ordered_20251011_v4.pdf,,2025-10-11,2025-10-11 10:33:39,11,filename_date,4,31845
 2025-10-11 10:53:31,0100012025100800023,C:\Users\one\Desktop\구매계약서,Y,C:\Users\one\Desktop\구매계약서\ordered_20251011_v6.pdf,,2025-10-11,2025-10-11 10:49:51,31,filename_date,6,48040
+2025-10-11 11:01:52,0100012025100800023,C:\Users\one\Desktop\구매계약서,N,,,,,,,0,18359
+2025-10-11 11:02:17,0100012025100800023,C:\Users\one\Desktop\구매계약서,N,,,,,,,0,18371
+2025-10-11 11:07:05,0100012025100800017,C:\Users\one\Desktop\구매계약서,N,,,,,,,0,18290
+2025-10-11 11:09:41,2025100900021,C:\Users\one\Desktop\구매계약서,Y,C:\Users\one\Desktop\구매계약서\ordered_20251011_v7.pdf,,2025-10-11,2025-10-11 11:01:26,1,filename_date,7,3036
+2025-10-11 11:10:18,0100012025100800057,C:\Users\one\Desktop\구매계약서,N,,,,,,,0,18285
+2025-10-11 11:11:17,5100800057,C:\Users\one\Desktop\구매계약서,N,,,,,,,0,18422

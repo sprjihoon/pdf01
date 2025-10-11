@@ -1373,12 +1373,16 @@ class MainWindow(QMainWindow):
     def suggest_similar_orders(self, search_order):
         """비슷한 주문번호 추천"""
         try:
+            from matcher import normalize_order_number, extract_order_numbers_from_text
             normalized_search = normalize_order_number(search_order)
-            if not normalized_search or len(normalized_search) != 13:
+            if not normalized_search or len(normalized_search) < 6:
                 return
             
-            # 같은 시리즈(앞 10자리) 찾기
-            series_prefix = normalized_search[:10]  # 2025100800
+            # 같은 시리즈 찾기 (뒷자리 기준)
+            if len(normalized_search) >= 8:
+                series_prefix = normalized_search[-8:]  # 뒷자리 8자리로 시리즈 판단
+            else:
+                series_prefix = normalized_search
             working_path = config.get_working_path()
             
             if not working_path:
@@ -1389,7 +1393,6 @@ class MainWindow(QMainWindow):
             
             import pdfplumber
             from pathlib import Path
-            from matcher import normalize_order_number, extract_order_numbers_from_text
             
             pdf_files = list(Path(working_path).glob("*.pdf"))
             
@@ -1402,9 +1405,9 @@ class MainWindow(QMainWindow):
                             extracted = extract_order_numbers_from_text(text)
                             for order_raw in extracted:
                                 normalized = normalize_order_number(order_raw)
-                                # 같은 시리즈이고 13자리인 경우
-                                if (len(normalized) == 13 and 
-                                    normalized.startswith(series_prefix) and 
+                                # 같은 시리즈이고 유효한 길이인 경우
+                                if (len(normalized) >= 8 and 
+                                    normalized.endswith(series_prefix) and 
                                     normalized != normalized_search):
                                     similar_orders.add(normalized)
                             
@@ -1421,9 +1424,13 @@ class MainWindow(QMainWindow):
                 similar_list = sorted(list(similar_orders))[:5]
                 self.search_log(f"💡 비슷한 주문번호 추천:")
                 for order in similar_list:
-                    # 원본 형태로 복원해서 표시
-                    original_form = f"01000120251{order[4:]}"
-                    self.search_log(f"   • {original_form}")
+                    # 10자리 주문번호를 사용자 친화적 형태로 표시
+                    if len(order) == 10:
+                        # 10자리면 앞에 적절한 접두사 추가
+                        display_form = f"예상 형태: ****{order}"
+                    else:
+                        display_form = order
+                    self.search_log(f"   • {display_form}")
                     
         except Exception as e:
             self.search_log(f"추천 검색 중 오류: {str(e)}")
