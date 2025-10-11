@@ -1093,6 +1093,9 @@ class MainWindow(QMainWindow):
             self.preview_btn.setEnabled(False)
             self.search_log(f"⏱️ 검색 완료 ({search_duration}ms) - 결과 없음")
             
+            # 비슷한 주문번호 추천
+            self.suggest_similar_orders(self.order_number_edit.text().strip())
+            
             # 로그 기록
             logger.log_search_result(
                 self.order_number_edit.text().strip(), 
@@ -1366,6 +1369,63 @@ class MainWindow(QMainWindow):
         # 스크롤을 맨 아래로
         scrollbar = self.search_log_text.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
+    
+    def suggest_similar_orders(self, search_order):
+        """비슷한 주문번호 추천"""
+        try:
+            normalized_search = normalize_order_number(search_order)
+            if not normalized_search or len(normalized_search) != 13:
+                return
+            
+            # 같은 시리즈(앞 10자리) 찾기
+            series_prefix = normalized_search[:10]  # 2025100800
+            working_path = config.get_working_path()
+            
+            if not working_path:
+                return
+                
+            # 빠른 스캔으로 비슷한 주문번호 찾기
+            similar_orders = set()
+            
+            import pdfplumber
+            from pathlib import Path
+            
+            pdf_files = list(Path(working_path).glob("*.pdf"))
+            
+            for pdf_file in pdf_files[:3]:  # 최대 3개 파일만 확인
+                try:
+                    with pdfplumber.open(str(pdf_file)) as pdf:
+                        for i, page in enumerate(pdf.pages[:20]):  # 각 파일당 최대 20페이지
+                            text = page.extract_text() or ''
+                            
+                            extracted = extract_order_numbers_from_text(text)
+                            for order_raw in extracted:
+                                normalized = normalize_order_number(order_raw)
+                                # 같은 시리즈이고 13자리인 경우
+                                if (len(normalized) == 13 and 
+                                    normalized.startswith(series_prefix) and 
+                                    normalized != normalized_search):
+                                    similar_orders.add(normalized)
+                            
+                            if len(similar_orders) >= 5:  # 5개 찾으면 중단
+                                break
+                        
+                        if len(similar_orders) >= 5:
+                            break
+                            
+                except Exception:
+                    continue
+            
+            if similar_orders:
+                similar_list = sorted(list(similar_orders))[:5]
+                self.search_log(f"💡 비슷한 주문번호 추천:")
+                for order in similar_list:
+                    # 원본 형태로 복원해서 표시
+                    original_form = f"01000120251{order[4:]}"
+                    self.search_log(f"   • {original_form}")
+                    
+        except Exception as e:
+            self.search_log(f"추천 검색 중 오류: {str(e)}")
 
 
 def main():
