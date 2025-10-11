@@ -271,14 +271,24 @@ class MainWindow(QMainWindow):
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         main_layout = QVBoxLayout(main_widget)
-        main_layout.setSpacing(0)
-        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)  # 0 → 10으로 여백 추가하여 겹침 방지
+        main_layout.setContentsMargins(15, 15, 15, 15)  # 여백 확대
         
         # 상단 통합 경로 영역 생성
         self.create_base_path_section(main_layout)
         
-        # 탭 위젯 생성
+        # 탭 위젯 생성 (여백 추가)
         self.tab_widget = QTabWidget()
+        self.tab_widget.setStyleSheet("""
+            QTabWidget {
+                margin-top: 10px;
+            }
+            QTabWidget::pane {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                padding: 10px;
+            }
+        """)
         main_layout.addWidget(self.tab_widget)
         
         # PDF 정렬 탭 생성
@@ -300,12 +310,14 @@ class MainWindow(QMainWindow):
                 background-color: #f8f9fa;
                 border: 1px solid #dee2e6;
                 border-radius: 8px;
-                margin-bottom: 10px;
+                margin-bottom: 15px;
+                padding: 5px;
             }
         """)
         
         path_layout = QVBoxLayout(path_frame)
-        path_layout.setSpacing(10)
+        path_layout.setSpacing(12)
+        path_layout.setContentsMargins(15, 15, 15, 15)  # 내부 여백 확대
         
         # 제목
         title_layout = QHBoxLayout()
@@ -340,17 +352,17 @@ class MainWindow(QMainWindow):
             QLabel {
                 background-color: white;
                 border: 2px solid #2196F3;
-                padding: 18px 15px;
+                padding: 30px 20px;
                 border-radius: 8px;
                 font-family: 'Consolas', 'Courier New', monospace;
-                font-size: 10pt;
+                font-size: 11pt;
                 color: #333;
                 font-weight: normal;
-                line-height: 1.4;
+                line-height: 1.6;
                 qproperty-alignment: 'AlignVCenter | AlignLeft';
             }
         """)
-        self.current_path_label.setMinimumHeight(55)
+        self.current_path_label.setMinimumHeight(80)  # 70 → 80으로 추가 증가
         self.current_path_label.setWordWrap(False)
         self.current_path_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.current_path_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -829,6 +841,19 @@ class MainWindow(QMainWindow):
         printer_layout.addStretch()
         print_layout.addLayout(printer_layout)
         
+        # PDF 뷰어 선택 옵션 추가
+        viewer_layout = QHBoxLayout()
+        viewer_layout.addWidget(QLabel("PDF 뷰어:"))
+        self.viewer_combo = QComboBox()
+        self.viewer_combo.addItem("🚀 SumatraPDF (빠름)", "sumatra")
+        self.viewer_combo.addItem("🖥️ 기본 뷰어 (폰트 안정)", "default")
+        self.viewer_combo.addItem("📱 Edge PDF (권장)", "edge")
+        self.viewer_combo.setCurrentIndex(2)  # Edge를 기본으로 설정
+        self.viewer_combo.setMinimumWidth(200)
+        viewer_layout.addWidget(self.viewer_combo)
+        viewer_layout.addStretch()
+        print_layout.addLayout(viewer_layout)
+        
         # 인쇄 옵션
         options_layout = QHBoxLayout()
         
@@ -922,8 +947,12 @@ class MainWindow(QMainWindow):
         self.search_progress.hide()
         log_layout.insertWidget(0, self.search_progress)
         
+        # 저장된 뷰어 설정 로드
+        self.load_viewer_settings()
+        
         # 초기 로그
         self.search_log("주문번호 검색 기능이 준비되었습니다.")
+        self.search_log("💡 폰트 문제시 PDF 뷰어를 'Edge PDF'로 변경하세요")
         self.refresh_printers()
     
     def load_saved_paths(self):
@@ -1275,7 +1304,7 @@ class MainWindow(QMainWindow):
         self.search_result_table.setRowCount(0)
     
     def preview_order(self):
-        """주문번호 미리보기"""
+        """주문번호 미리보기 - 다양한 뷰어 지원"""
         if not self.search_result:
             QMessageBox.warning(self, "미리보기 오류", "먼저 주문번호를 검색하세요.")
             return
@@ -1283,27 +1312,54 @@ class MainWindow(QMainWindow):
         best_match = self.search_result.best_match
         page_ranges = self.order_searcher.get_page_ranges_str(best_match.page_numbers)
         
+        # 선택된 뷰어 확인
+        selected_viewer = self.viewer_combo.currentData()
+        
         self.search_log(f"👀 미리보기 실행: {os.path.basename(best_match.file_path)} 페이지 {page_ranges}")
+        self.search_log(f"📱 사용 뷰어: {self.viewer_combo.currentText()}")
         
         try:
-            # SumatraPDF로 파일 열기 (미리보기)
-            if self.print_manager.is_sumatra_available():
+            if selected_viewer == "sumatra":
+                # SumatraPDF 사용
+                if self.print_manager.is_sumatra_available():
+                    import subprocess
+                    subprocess.Popen([self.print_manager.sumatra_path, best_match.file_path])
+                    self.search_log(f"✅ SumatraPDF로 미리보기 열림")
+                else:
+                    self.search_log("⚠️ SumatraPDF를 찾을 수 없어 기본 뷰어로 실행")
+                    os.startfile(best_match.file_path)
+                    
+            elif selected_viewer == "edge":
+                # Microsoft Edge로 실행 (폰트 지원 우수)
                 import subprocess
-                # SumatraPDF로 파일 열기
-                subprocess.Popen([self.print_manager.sumatra_path, best_match.file_path])
-                self.search_log(f"✅ 미리보기 열림: {os.path.basename(best_match.file_path)}")
-                
-                # 안내 메시지
-                QMessageBox.information(self, "미리보기 열림", 
-                    f"PDF 미리보기가 열렸습니다.\n\n"
-                    f"파일: {os.path.basename(best_match.file_path)}\n"
-                    f"해당 페이지: {page_ranges}\n\n"
-                    f"확인 후 '직접 인쇄' 버튼을 사용하시거나\n"
-                    f"SumatraPDF에서 직접 인쇄하세요.")
-            else:
-                # SumatraPDF가 없으면 기본 PDF 뷰어로
+                try:
+                    subprocess.Popen([
+                        "msedge.exe", 
+                        best_match.file_path,
+                        "--new-window"
+                    ])
+                    self.search_log(f"✅ Edge로 미리보기 열림 (폰트 안정)")
+                except:
+                    # Edge 실행 실패시 기본 뷰어로
+                    self.search_log("⚠️ Edge 실행 실패, 기본 뷰어로 실행")
+                    os.startfile(best_match.file_path)
+                    
+            else:  # default
+                # 기본 PDF 뷰어 사용
                 os.startfile(best_match.file_path)
                 self.search_log(f"✅ 기본 뷰어로 미리보기 열림")
+            
+            # 안내 메시지 (폰트 문제 해결 팁 포함)
+            QMessageBox.information(self, "미리보기 열림", 
+                f"PDF 미리보기가 열렸습니다.\n\n"
+                f"📄 파일: {os.path.basename(best_match.file_path)}\n"
+                f"📄 해당 페이지: {page_ranges}\n"
+                f"📱 뷰어: {self.viewer_combo.currentText()}\n\n"
+                f"💡 폰트가 깨져 보이면:\n"
+                f"   1. PDF 뷰어를 'Edge PDF'로 변경\n"
+                f"   2. 또는 '기본 뷰어'로 변경 후 재시도\n\n"
+                f"확인 후 뷰어에서 직접 인쇄하거나\n"
+                f"'빠른 인쇄' 버튼을 사용하세요.")
                 
         except Exception as e:
             error_msg = f"미리보기 실행 중 오류: {str(e)}"
@@ -1322,12 +1378,16 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "인쇄 오류", "프린터를 선택하세요.")
             return
         
-        # SumatraPDF 확인
-        if not self.print_manager.is_sumatra_available():
+        # 선택된 뷰어에 따른 인쇄 방식 결정
+        selected_viewer = self.viewer_combo.currentData()
+        
+        if selected_viewer == "sumatra" and not self.print_manager.is_sumatra_available():
             QMessageBox.warning(self, "인쇄 오류", 
                 f"SumatraPDF를 찾을 수 없습니다.\n\n"
-                f"SumatraPDF를 설치하거나 경로를 설정해주세요.\n"
-                f"현재 경로: {self.print_manager.sumatra_path}")
+                f"다음 중 하나를 시도해보세요:\n"
+                f"1. PDF 뷰어를 'Edge PDF' 또는 '기본 뷰어'로 변경\n"
+                f"2. SumatraPDF 설치 후 재시도\n\n"
+                f"현재 SumatraPDF 경로: {self.print_manager.sumatra_path or '없음'}")
             return
         
         # 인쇄 확인 대화상자
@@ -1355,7 +1415,47 @@ class MainWindow(QMainWindow):
         if reply == QMessageBox.No:
             return
         
-        self.print_order_execute(best_match.file_path, page_ranges, printer_name, copies, duplex)
+        # 선택된 뷰어에 따라 다른 방식으로 인쇄
+        if selected_viewer == "sumatra":
+            self.print_order_execute(best_match.file_path, page_ranges, printer_name, copies, duplex)
+        else:
+            # Edge나 기본 뷰어는 인쇄 대화상자 방식 사용
+            self.search_log(f"📱 {self.viewer_combo.currentText()}에서 인쇄 대화상자 실행")
+            try:
+                if selected_viewer == "edge":
+                    # Edge로 파일 열고 인쇄 가이드
+                    import subprocess
+                    subprocess.Popen([
+                        "msedge.exe", 
+                        best_match.file_path,
+                        "--new-window"
+                    ])
+                    
+                    QMessageBox.information(self, "인쇄 안내", 
+                        f"Edge에서 PDF가 열렸습니다.\n\n"
+                        f"📄 해당 페이지: {page_ranges}\n\n"
+                        f"인쇄 방법:\n"
+                        f"1. Edge에서 Ctrl+P 누르기\n"
+                        f"2. 페이지 범위에 '{page_ranges}' 입력\n"
+                        f"3. 매수: {copies}매 설정\n"
+                        f"4. 인쇄 실행")
+                        
+                else:
+                    # 기본 뷰어로 열고 안내
+                    os.startfile(best_match.file_path)
+                    
+                    QMessageBox.information(self, "인쇄 안내",
+                        f"기본 PDF 뷰어로 파일이 열렸습니다.\n\n"
+                        f"📄 해당 페이지: {page_ranges}\n\n"
+                        f"인쇄 방법:\n"
+                        f"1. PDF 뷰어에서 인쇄 (Ctrl+P)\n"
+                        f"2. 페이지 범위에 '{page_ranges}' 입력\n"
+                        f"3. 매수: {copies}매 설정\n"
+                        f"4. 인쇄 실행")
+                
+            except Exception as e:
+                self.search_log(f"❌ 뷰어 실행 오류: {str(e)}")
+                QMessageBox.critical(self, "오류", f"뷰어 실행 중 오류: {str(e)}")
     
     def print_order(self):
         """주문번호 인쇄 (미리보기 후 인쇄)"""
@@ -1493,6 +1593,43 @@ class MainWindow(QMainWindow):
         # 스크롤을 맨 아래로
         scrollbar = self.search_log_text.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
+    
+    def load_viewer_settings(self):
+        """저장된 뷰어 설정 로드"""
+        try:
+            default_viewer = config.get("print_settings.default_viewer", "edge")
+            
+            # 콤보박스에서 해당 뷰어 선택
+            for i in range(self.viewer_combo.count()):
+                if self.viewer_combo.itemData(i) == default_viewer:
+                    self.viewer_combo.setCurrentIndex(i)
+                    break
+                    
+            # 뷰어 변경 이벤트 연결
+            self.viewer_combo.currentTextChanged.connect(self.on_viewer_changed)
+            
+        except Exception as e:
+            self.search_log(f"뷰어 설정 로드 오류: {str(e)}")
+    
+    def on_viewer_changed(self):
+        """PDF 뷰어 변경시 설정 저장"""
+        try:
+            selected_viewer = self.viewer_combo.currentData()
+            config.set("print_settings.default_viewer", selected_viewer)
+            
+            viewer_name = self.viewer_combo.currentText()
+            self.search_log(f"📱 PDF 뷰어 변경: {viewer_name}")
+            
+            # 뷰어별 안내 메시지
+            if selected_viewer == "edge":
+                self.search_log("✅ Edge PDF: 한글 폰트 지원 우수, 권장")
+            elif selected_viewer == "sumatra":
+                self.search_log("⚡ SumatraPDF: 빠른 실행, 폰트 문제 있을 수 있음")
+            else:
+                self.search_log("🖥️ 기본 뷰어: 시스템 설정 PDF 프로그램 사용")
+                
+        except Exception as e:
+            self.search_log(f"뷰어 설정 저장 오류: {str(e)}")
     
     def suggest_similar_orders(self, search_order):
         """비슷한 주문번호 추천"""

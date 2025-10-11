@@ -38,7 +38,8 @@ class ConfigManager:
                 "printer_name": "",  # 기본 프린터명
                 "copies": 1,  # 인쇄 매수
                 "duplex": False,  # 양면 인쇄
-                "sumatra_path": "SumatraPDF.exe"  # SumatraPDF 경로
+                "sumatra_path": "SumatraPDF.exe",  # SumatraPDF 경로
+                "default_viewer": "edge"  # 기본 PDF 뷰어 (sumatra, default, edge)
             },
             "ui_settings": {
                 "window_size": [1000, 800],
