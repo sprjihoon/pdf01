@@ -28,7 +28,7 @@ import time
 
 
 class ProcessingWorker(QThread):
-    """백그라운드 작업 스레드"""
+    """백그라운드 작업 스레드 - PDF 정렬용"""
     progress = Signal(str)  # 진행 상황 메시지
     finished = Signal(dict)  # 완료 (결과 데이터)
     error = Signal(str)  # 오류
@@ -177,6 +177,82 @@ class ProcessingWorker(QThread):
             
         except Exception as e:
             error_msg = f"❌ 오류 발생:\n{str(e)}\n\n상세 정보:\n{traceback.format_exc()}"
+            self.error.emit(error_msg)
+
+
+class OrderSearchWorker(QThread):
+    """주문번호 검색 백그라운드 작업 스레드"""
+    progress = Signal(str)  # 진행 상황 메시지
+    finished = Signal(object)  # 완료 (SearchResult 또는 None)
+    error = Signal(str)  # 오류
+    
+    def __init__(self, order_number, folder_path):
+        super().__init__()
+        self.order_number = order_number
+        self.folder_path = folder_path
+        self.order_searcher = OrderSearcher()
+    
+    def run(self):
+        try:
+            self.progress.emit(f"🔍 검색 시작: {self.order_number}")
+            self.progress.emit(f"📁 대상 폴더: {self.folder_path}")
+            
+            # PDF 파일 목록 가져오기
+            self.progress.emit("📄 PDF 파일 목록 확인 중...")
+            pdf_files = self.order_searcher._find_pdf_files(self.folder_path)
+            self.progress.emit(f"✓ {len(pdf_files)}개 PDF 파일 발견")
+            
+            if not pdf_files:
+                self.progress.emit("❌ PDF 파일이 없습니다")
+                self.finished.emit(None)
+                return
+            
+            # 파일별로 검색 (진행률 표시)
+            matches = []
+            total_files = len(pdf_files)
+            
+            for i, pdf_file in enumerate(pdf_files):
+                try:
+                    filename = os.path.basename(pdf_file)
+                    self.progress.emit(f"🔍 검색 중... ({i+1}/{total_files}) {filename}")
+                    
+                    match = self.order_searcher._search_order_in_file(pdf_file, self.order_number)
+                    if match:
+                        matches.append(match)
+                        self.progress.emit(f"✅ 발견: {filename}")
+                    
+                    # 주기적으로 진행 상황 업데이트
+                    if (i + 1) % 10 == 0 or i == total_files - 1:
+                        progress = int((i + 1) / total_files * 100)
+                        self.progress.emit(f"📊 진행률: {progress}% ({i+1}/{total_files})")
+                        
+                except Exception as e:
+                    self.progress.emit(f"⚠️ 파일 오류 ({filename}): {str(e)}")
+                    continue
+            
+            # 검색 완료
+            if matches:
+                self.progress.emit(f"✅ 검색 완료: {len(matches)}개 파일에서 발견")
+                
+                # 최신 파일 선택
+                best_match, decided_by = self.order_searcher._select_latest_file(matches)
+                
+                from order_searcher import SearchResult
+                search_result = SearchResult(
+                    order_number=self.order_number,
+                    best_match=best_match,
+                    all_matches=matches,
+                    decided_by=decided_by
+                )
+                
+                self.progress.emit(f"🎯 최신 파일: {os.path.basename(best_match.file_path)} ({decided_by} 기준)")
+                self.finished.emit(search_result)
+            else:
+                self.progress.emit(f"❌ '{self.order_number}'를 찾을 수 없습니다")
+                self.finished.emit(None)
+                
+        except Exception as e:
+            error_msg = f"❌ 검색 중 오류 발생:\n{str(e)}\n\n상세 정보:\n{traceback.format_exc()}"
             self.error.emit(error_msg)
 
 
@@ -691,15 +767,38 @@ class MainWindow(QMainWindow):
         print_group.setLayout(print_layout)
         layout.addWidget(print_group)
         
-        # 인쇄 버튼
-        self.print_btn = QPushButton("🖨️ 인쇄 실행")
+        # 인쇄 버튼들
+        print_buttons_layout = QHBoxLayout()
+        
+        self.preview_btn = QPushButton("👀 미리보기 & 인쇄")
+        self.preview_btn.setMinimumHeight(45)
+        self.preview_btn.setEnabled(False)
+        self.preview_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                font-size: 13pt;
+                font-weight: bold;
+                border-radius: 8px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QPushButton:disabled {
+                background-color: #BDBDBD;
+            }
+        """)
+        self.preview_btn.clicked.connect(self.preview_order)
+        print_buttons_layout.addWidget(self.preview_btn, 2)
+        
+        self.print_btn = QPushButton("⚡ 빠른 인쇄")
         self.print_btn.setMinimumHeight(45)
         self.print_btn.setEnabled(False)
         self.print_btn.setStyleSheet("""
             QPushButton {
                 background-color: #4CAF50;
                 color: white;
-                font-size: 14pt;
+                font-size: 13pt;
                 font-weight: bold;
                 border-radius: 8px;
             }
@@ -710,8 +809,10 @@ class MainWindow(QMainWindow):
                 background-color: #BDBDBD;
             }
         """)
-        self.print_btn.clicked.connect(self.print_order)
-        layout.addWidget(self.print_btn)
+        self.print_btn.clicked.connect(self.print_order_direct)
+        print_buttons_layout.addWidget(self.print_btn, 1)
+        
+        layout.addLayout(print_buttons_layout)
         
         # 로그 영역
         log_group = QGroupBox("4️⃣ 작업 로그")
@@ -733,6 +834,12 @@ class MainWindow(QMainWindow):
         self.order_searcher = OrderSearcher()
         self.print_manager = PrintManager()
         self.search_result = None
+        self.search_worker = None  # 검색 작업 스레드
+        
+        # 진행률 표시
+        self.search_progress = QProgressBar()
+        self.search_progress.hide()
+        log_layout.insertWidget(0, self.search_progress)
         
         # 초기 로그
         self.search_log("주문번호 검색 기능이 준비되었습니다.")
@@ -915,7 +1022,7 @@ class MainWindow(QMainWindow):
     # 검색 폴더 관련 메서드들은 더 이상 필요 없음 (통합 경로 사용)
     
     def search_order(self):
-        """주문번호 검색"""
+        """주문번호 검색 - 백그라운드 처리"""
         order_number = self.order_number_edit.text().strip()
         
         if not order_number:
@@ -934,39 +1041,74 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "경로 오류", f"작업 폴더에 문제가 있습니다:\n{message}")
             return
         
-        self.search_btn.setEnabled(False)
-        self.search_log(f"🔍 검색 시작: {order_number}")
+        # 이미 검색 중이면 중단
+        if self.search_worker and self.search_worker.isRunning():
+            self.search_worker.terminate()
+            self.search_worker.wait()
         
-        try:
-            start_time = time.time()
+        # UI 비활성화 및 진행률 표시
+        self.search_btn.setEnabled(False)
+        self.print_btn.setEnabled(False)
+        self.search_progress.show()
+        self.search_progress.setMinimum(0)
+        self.search_progress.setMaximum(0)  # Indeterminate
+        
+        # 검색 시작 시간 기록
+        self.search_start_time = time.time()
+        
+        # 백그라운드 검색 시작
+        self.search_worker = OrderSearchWorker(order_number, working_path)
+        self.search_worker.progress.connect(self.search_log)
+        self.search_worker.finished.connect(self.on_search_finished)
+        self.search_worker.error.connect(self.on_search_error)
+        self.search_worker.start()
+    
+    def on_search_finished(self, search_result):
+        """검색 완료 처리"""
+        # UI 복원
+        self.search_btn.setEnabled(True)
+        self.search_progress.hide()
+        
+        # 검색 시간 계산
+        search_duration = int((time.time() - self.search_start_time) * 1000)
+        
+        if search_result:
+            self.search_result = search_result
+            self.display_search_result(search_result)
+            self.print_btn.setEnabled(True)
+            self.preview_btn.setEnabled(True)
+            self.search_log(f"⏱️ 검색 완료 ({search_duration}ms)")
             
-            # 주문번호 검색
-            search_result = self.order_searcher.search_order_in_folder(working_path, order_number)
+            # 로그 기록
+            logger.log_search_result(
+                self.order_number_edit.text().strip(), 
+                config.get_working_path(), 
+                search_result, 
+                search_duration
+            )
+        else:
+            self.search_result = None
+            self.clear_search_result()
+            self.print_btn.setEnabled(False)
+            self.preview_btn.setEnabled(False)
+            self.search_log(f"⏱️ 검색 완료 ({search_duration}ms) - 결과 없음")
             
-            search_duration = int((time.time() - start_time) * 1000)
-            
-            if search_result:
-                self.search_result = search_result
-                self.display_search_result(search_result)
-                self.print_btn.setEnabled(True)
-                self.search_log(f"✅ 검색 완료: {len(search_result.all_matches)}개 파일에서 발견")
-                
-                # 로그 기록
-                logger.log_search_result(order_number, working_path, search_result, search_duration)
-            else:
-                self.search_result = None
-                self.clear_search_result()
-                self.print_btn.setEnabled(False)
-                self.search_log(f"❌ 검색 실패: '{order_number}'를 찾을 수 없습니다")
-                
-                # 로그 기록
-                logger.log_search_result(order_number, working_path, None, search_duration)
-                
-        except Exception as e:
-            self.search_log(f"❌ 검색 중 오류: {str(e)}")
-            QMessageBox.critical(self, "검색 오류", f"검색 중 오류가 발생했습니다:\n{str(e)}")
-        finally:
-            self.search_btn.setEnabled(True)
+            # 로그 기록
+            logger.log_search_result(
+                self.order_number_edit.text().strip(), 
+                config.get_working_path(), 
+                None, 
+                search_duration
+            )
+    
+    def on_search_error(self, error_msg):
+        """검색 오류 처리"""
+        # UI 복원
+        self.search_btn.setEnabled(True)
+        self.search_progress.hide()
+        
+        self.search_log(error_msg)
+        QMessageBox.critical(self, "검색 오류", error_msg)
     
     def display_search_result(self, search_result):
         """검색 결과를 테이블에 표시"""
@@ -1010,33 +1152,136 @@ class MainWindow(QMainWindow):
         """검색 결과 테이블 클리어"""
         self.search_result_table.setRowCount(0)
     
-    def print_order(self):
-        """주문번호 인쇄"""
+    def preview_order(self):
+        """주문번호 미리보기"""
+        if not self.search_result:
+            QMessageBox.warning(self, "미리보기 오류", "먼저 주문번호를 검색하세요.")
+            return
+        
+        best_match = self.search_result.best_match
+        page_ranges = self.order_searcher.get_page_ranges_str(best_match.page_numbers)
+        
+        self.search_log(f"👀 미리보기 실행: {os.path.basename(best_match.file_path)} 페이지 {page_ranges}")
+        
+        try:
+            # SumatraPDF로 파일 열기 (미리보기)
+            if self.print_manager.is_sumatra_available():
+                import subprocess
+                # SumatraPDF로 파일 열기
+                subprocess.Popen([self.print_manager.sumatra_path, best_match.file_path])
+                self.search_log(f"✅ 미리보기 열림: {os.path.basename(best_match.file_path)}")
+                
+                # 안내 메시지
+                QMessageBox.information(self, "미리보기 열림", 
+                    f"PDF 미리보기가 열렸습니다.\n\n"
+                    f"파일: {os.path.basename(best_match.file_path)}\n"
+                    f"해당 페이지: {page_ranges}\n\n"
+                    f"확인 후 '직접 인쇄' 버튼을 사용하시거나\n"
+                    f"SumatraPDF에서 직접 인쇄하세요.")
+            else:
+                # SumatraPDF가 없으면 기본 PDF 뷰어로
+                os.startfile(best_match.file_path)
+                self.search_log(f"✅ 기본 뷰어로 미리보기 열림")
+                
+        except Exception as e:
+            error_msg = f"미리보기 실행 중 오류: {str(e)}"
+            self.search_log(f"❌ {error_msg}")
+            QMessageBox.critical(self, "미리보기 오류", error_msg)
+    
+    def print_order_direct(self):
+        """주문번호 직접 인쇄 (설정 기반)"""
         if not self.search_result:
             QMessageBox.warning(self, "인쇄 오류", "먼저 주문번호를 검색하세요.")
             return
         
+        # 인쇄 설정 확인
         printer_name = self.printer_combo.currentText()
         if not printer_name:
             QMessageBox.warning(self, "인쇄 오류", "프린터를 선택하세요.")
             return
         
-        # 인쇄 설정 가져오기
+        # SumatraPDF 확인
+        if not self.print_manager.is_sumatra_available():
+            QMessageBox.warning(self, "인쇄 오류", 
+                f"SumatraPDF를 찾을 수 없습니다.\n\n"
+                f"SumatraPDF를 설치하거나 경로를 설정해주세요.\n"
+                f"현재 경로: {self.print_manager.sumatra_path}")
+            return
+        
+        # 인쇄 확인 대화상자
+        best_match = self.search_result.best_match
+        page_ranges = self.order_searcher.get_page_ranges_str(best_match.page_numbers)
         copies = self.copies_spin.value()
         duplex = self.duplex_check.isChecked()
         
-        best_match = self.search_result.best_match
-        page_ranges = self.order_searcher.get_page_ranges_str(best_match.page_numbers)
+        reply = QMessageBox.question(
+            self, "인쇄 확인", 
+            f"다음 내용으로 인쇄하시겠습니까?\n\n"
+            f"📄 파일: {os.path.basename(best_match.file_path)}\n"
+            f"📄 페이지: {page_ranges}\n"
+            f"🖨️ 프린터: {printer_name}\n"
+            f"📰 매수: {copies}매\n"
+            f"📋 양면: {'예' if duplex else '아니오'}",
+            QMessageBox.Yes | QMessageBox.No
+        )
         
+        if reply == QMessageBox.No:
+            return
+        
+        self.print_order_execute(best_match.file_path, page_ranges, printer_name, copies, duplex)
+    
+    def print_order(self):
+        """주문번호 인쇄 (미리보기 후 인쇄)"""
+        if not self.search_result:
+            QMessageBox.warning(self, "인쇄 오류", "먼저 주문번호를 검색하세요.")
+            return
+        
+        best_match = self.search_result.best_match
+        
+        self.search_log(f"🖨️ 인쇄 대화상자 실행: {os.path.basename(best_match.file_path)}")
+        
+        try:
+            # SumatraPDF 인쇄 대화상자로 실행
+            if self.print_manager.is_sumatra_available():
+                success = self.print_manager.print_dialog(best_match.file_path)
+                if success:
+                    self.search_log(f"✅ 인쇄 대화상자 열림")
+                    
+                    # 로그 기록 (대화상자 형태)
+                    logger.log_print_result(
+                        order_number=self.search_result.order_number,
+                        file_path=best_match.file_path,
+                        page_ranges="dialog",
+                        printer_name="user_selected",
+                        copies=0,
+                        duplex=False,
+                        success=True
+                    )
+                else:
+                    self.search_log(f"❌ 인쇄 대화상자 실행 실패")
+            else:
+                QMessageBox.warning(self, "인쇄 오류", 
+                    "SumatraPDF를 찾을 수 없습니다.\n"
+                    "미리보기 기능을 사용하여 기본 뷰어에서 인쇄하세요.")
+                    
+        except Exception as e:
+            error_msg = f"인쇄 대화상자 실행 중 오류: {str(e)}"
+            self.search_log(f"❌ {error_msg}")
+            QMessageBox.critical(self, "인쇄 오류", error_msg)
+    
+    def print_order_execute(self, file_path, page_ranges, printer_name, copies, duplex):
+        """실제 인쇄 실행"""
         self.print_btn.setEnabled(False)
-        self.search_log(f"🖨️ 인쇄 시작: {os.path.basename(best_match.file_path)} 페이지 {page_ranges}")
+        self.preview_btn.setEnabled(False)
+        
+        self.search_log(f"🖨️ 인쇄 실행 중...")
         
         try:
             start_time = time.time()
             
             # 인쇄 실행
             success = self.print_manager.print_pages(
-                pdf_path=best_match.file_path,
+                pdf_path=file_path,
                 page_ranges=page_ranges,
                 printer_name=printer_name,
                 copies=copies,
@@ -1046,21 +1291,20 @@ class MainWindow(QMainWindow):
             print_duration = int((time.time() - start_time) * 1000)
             
             if success:
-                self.search_log(f"✅ 인쇄 완료: {printer_name}에서 {copies}매 출력")
+                self.search_log(f"✅ 인쇄 완료: {printer_name}에서 {copies}매 출력 ({print_duration}ms)")
                 QMessageBox.information(self, "인쇄 완료", 
-                    f"인쇄가 완료되었습니다.\n\n"
-                    f"파일: {os.path.basename(best_match.file_path)}\n"
-                    f"페이지: {page_ranges}\n"
-                    f"매수: {copies}매\n"
-                    f"프린터: {printer_name}")
+                    f"인쇄가 완료되었습니다!\n\n"
+                    f"⏱️ 소요 시간: {print_duration}ms")
             else:
-                self.search_log(f"❌ 인쇄 실패")
-                QMessageBox.critical(self, "인쇄 실패", "인쇄 중 오류가 발생했습니다.")
+                self.search_log(f"❌ 인쇄 실패 ({print_duration}ms)")
+                QMessageBox.critical(self, "인쇄 실패", 
+                    "인쇄 중 오류가 발생했습니다.\n"
+                    "프린터 상태를 확인해주세요.")
             
             # 로그 기록
             logger.log_print_result(
                 order_number=self.search_result.order_number,
-                file_path=best_match.file_path,
+                file_path=file_path,
                 page_ranges=page_ranges,
                 printer_name=printer_name,
                 copies=copies,
@@ -1077,7 +1321,7 @@ class MainWindow(QMainWindow):
             # 오류 로그 기록
             logger.log_print_result(
                 order_number=self.search_result.order_number,
-                file_path=best_match.file_path,
+                file_path=file_path,
                 page_ranges=page_ranges,
                 printer_name=printer_name,
                 copies=copies,
@@ -1088,6 +1332,7 @@ class MainWindow(QMainWindow):
             
         finally:
             self.print_btn.setEnabled(True)
+            self.preview_btn.setEnabled(True)
     
     def refresh_printers(self):
         """프린터 목록 새로고침"""

@@ -13,6 +13,7 @@ from typing import List, Dict, Optional, Tuple, Set
 from dataclasses import dataclass
 import pdfplumber
 from config_manager import config
+from matcher import extract_order_numbers_from_text, normalize_order_number
 
 
 @dataclass
@@ -151,22 +152,33 @@ class OrderSearcher:
         return [str(f) for f in pdf_files]
     
     def _search_order_in_file(self, file_path: str, order_number: str) -> Optional[OrderMatch]:
-        """특정 파일에서 주문번호 검색"""
+        """특정 파일에서 주문번호 검색 - 성능 최적화"""
         try:
             with pdfplumber.open(file_path) as pdf:
                 matching_pages = []
                 doc_date = None
+                total_pages = len(pdf.pages)
                 
-                for page_num, page in enumerate(pdf.pages, 1):
+                # 성능 최적화: 큰 파일은 처음 100페이지만 확인
+                check_pages = min(100, total_pages) if total_pages > 100 else total_pages
+                
+                for page_num, page in enumerate(pdf.pages[:check_pages], 1):
                     text = page.extract_text() or ""
                     
-                    # 주문번호 검색
-                    if order_number in text:
+                    # 주문번호 검색 (정규화된 형태로)
+                    extracted_orders = extract_order_numbers_from_text(text)
+                    normalized_orders = [normalize_order_number(x) for x in extracted_orders]
+                    
+                    if order_number in normalized_orders:
                         matching_pages.append(page_num)
                     
                     # 문서 날짜 추출 (첫 번째 페이지에서만)
                     if page_num == 1 and not doc_date:
                         doc_date = self._extract_doc_date(text)
+                    
+                    # 조기 종료: 주문번호를 찾았고 10페이지 이상 확인했으면 중단
+                    if matching_pages and page_num >= 10:
+                        break
                 
                 if not matching_pages:
                     return None

@@ -7,7 +7,7 @@
   },
   "search_settings": {
     "base_folder": "C:/temp",
-    "order_pattern": "\\d{15,20}",
+    "order_pattern": "\\d{13}",
     "recursive_search": true
   },
   "print_settings": {
