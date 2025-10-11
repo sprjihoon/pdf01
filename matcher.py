@@ -327,32 +327,56 @@ def extract_addresses_from_text(text):
 
 
 def extract_order_numbers_from_text(text):
-    """텍스트에서 주문번호 후보 추출"""
-    candidates = []
+    """텍스트에서 주문번호 후보 추출 - 정확한 13자리 주문번호 우선"""
     
-    # 주요 패턴: 13자리 주문번호 (2025100600005 형태)
-    # 긴 숫자에서 13자리 부분 추출
+    # 전체 텍스트에서 13자리 형태의 주문번호 직접 카운트
+    # 2025로 시작하는 13자리 숫자를 우선으로 찾기
+    order_candidates = []
+    
+    # 1. 2025로 시작하는 13자리 숫자 우선 (실제 주문번호 형태)
+    year_based_orders = re.findall(r'2025\d{9}', text)
+    
+    # 빈도 계산
+    order_frequency = {}
+    for order in year_based_orders:
+        order_frequency[order] = order_frequency.get(order, 0) + 1
+    
+    # 2. 다른 13자리 패턴들도 추가
+    all_13digit = re.findall(r'\d{13}', text)
+    for order in all_13digit:
+        if order not in order_frequency:
+            order_frequency[order] = order_frequency.get(order, 0) + 1
+        else:
+            order_frequency[order] += 1
+    
+    # 3. 긴 숫자에서 13자리 추출 (보조)
     long_numbers = re.findall(r'\d{15,20}', text)
     for num in long_numbers:
-        # 긴 숫자에서 13자리 부분 추출 (뒤에서 13자리)
         if len(num) >= 13:
-            order_candidate = num[-13:]  # 마지막 13자리
-            candidates.append(order_candidate)
+            # 뒤에서 13자리
+            order_candidate = num[-13:]
+            if order_candidate.startswith('2025'):  # 2025년 주문만
+                order_frequency[order_candidate] = order_frequency.get(order_candidate, 0) + 1
     
-    # 직접 13자리 숫자 패턴
-    pattern1 = re.findall(r'\d{13}', text)
-    candidates.extend(pattern1)
+    # 4. 빈도순으로 정렬된 13자리 주문번호들
+    if order_frequency:
+        sorted_13digit = sorted(order_frequency.items(), key=lambda x: x[1], reverse=True)
+        result_candidates = [order for order, freq in sorted_13digit]
+    else:
+        result_candidates = []
     
-    # 호환성을 위한 기존 패턴들
-    # A-1234567 형식
-    pattern2 = re.findall(r'[A-Z]-\d{6,}', text)
-    candidates.extend(pattern2)
+    # 5. 호환성을 위한 기존 패턴들 추가 (후순위)
+    legacy_patterns = []
+    legacy_patterns.extend(re.findall(r'[A-Z]-\d{6,}', text))
+    legacy_patterns.extend(re.findall(r'[A-Z]{2,}-\d{4,}-\d{3,}', text))
     
-    # ORD-2024-001 형식  
-    pattern3 = re.findall(r'[A-Z]{2,}-\d{4,}-\d{3,}', text)
-    candidates.extend(pattern3)
+    # 중복 제거하며 최종 결과 구성
+    final_result = []
+    for candidate in result_candidates + legacy_patterns:
+        if candidate not in final_result:
+            final_result.append(candidate)
     
-    return candidates
+    return final_result
 
 
 def extract_pages(pdf_path):
@@ -409,7 +433,7 @@ def extract_pages(pdf_path):
 
 def calc_match_score(excel_name, excel_phone, excel_addr, excel_order, page_info, use_fuzzy=False, threshold=90):
     """
-    엑셀 행과 PDF 페이지의 매칭 점수 계산 - 주문번호 기준 매칭
+    엑셀 행과 PDF 페이지의 매칭 점수 계산 - 정확한 주문번호 기준 매칭
     
     Args:
         excel_name: 정규화된 엑셀 이름 (사용 안함)
@@ -423,28 +447,29 @@ def calc_match_score(excel_name, excel_phone, excel_addr, excel_order, page_info
     Returns:
         tuple: (score, reason)
             - score: 매칭 점수 (0-100)
-            - reason: 매칭 근거 ('order_exact', 'order_fuzzy', 등)
+            - reason: 매칭 근거 ('order_exact_primary', 'order_exact', 'order_fuzzy', 등)
     """
     # 주문번호가 비어있으면 매칭 불가
     if not excel_order or not page_info.norm_order_candidates:
         return 0, 'no_order_data'
     
-    # 정확 일치 확인 (주문번호만)
-    order_match = excel_order in page_info.norm_order_candidates
-    
-    # 주문번호가 정확히 일치하면 100점 (조기 종료)
-    if order_match:
-        return 100, 'order_exact'
+    # 정확 일치 확인 - 우선순위별로 점수 차등 부여
+    if excel_order in page_info.norm_order_candidates:
+        # 첫 번째 후보 (가장 빈번한 주문번호)와 일치하면 최고점
+        if page_info.norm_order_candidates and excel_order == page_info.norm_order_candidates[0]:
+            return 100, 'order_exact_primary'
+        else:
+            return 95, 'order_exact_secondary'
     
     # 유사도 매칭 사용하지 않으면 0점
     if not use_fuzzy:
         return 0, 'no_match'
     
-    # 주문번호 유사도 매칭
+    # 주문번호 유사도 매칭 (매우 엄격하게)
     best_order_sim = max((fuzz.ratio(excel_order, o) for o in page_info.norm_order_candidates), default=0)
     
-    # 임계값 이상이면 점수 반환
-    if best_order_sim >= threshold:
+    # 주문번호는 정확해야 하므로 임계값을 높게 설정 (98% 이상)
+    if best_order_sim >= max(threshold, 98):
         return best_order_sim, f'order_fuzzy({best_order_sim:.0f}%)'
     
     return 0, 'no_match'
