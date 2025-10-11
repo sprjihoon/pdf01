@@ -1389,6 +1389,7 @@ class MainWindow(QMainWindow):
             
             import pdfplumber
             from pathlib import Path
+            from matcher import normalize_order_number, extract_order_numbers_from_text
             
             pdf_files = list(Path(working_path).glob("*.pdf"))
             
