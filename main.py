@@ -322,30 +322,60 @@ class MainWindow(QMainWindow):
         path_layout.setSpacing(12)
         path_layout.setContentsMargins(15, 15, 15, 15)  # 내부 여백 확대
         
-        # 제목 및 경로선택 버튼
+        # 제목, 경로선택, 상태 - 완벽 정렬 (모든 요소 동일 높이)
         title_layout = QHBoxLayout()
+        title_layout.setSpacing(10)  # 요소 간 일정한 간격
+        
+        # 타이틀 (고정 높이로 정렬 맞춤)
         title_label = QLabel("📂 통합 작업 경로")
         title_font = QFont()
-        title_font.setPointSize(12)
+        title_font.setPointSize(11)  # 12 → 11로 축소
         title_font.setBold(True)
         title_label.setFont(title_font)
+        title_label.setFixedSize(150, 35)  # 고정 크기로 정렬 (높이 통일)
+        title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        title_label.setStyleSheet("padding: 5px;")
         title_layout.addWidget(title_label)
         
-        # 경로선택 버튼 (타이틀 바로 옆)
-        self.select_path_btn = QPushButton("📂 경로 선택")
-        self.select_path_btn.setMinimumSize(100, 30)
-        self.select_path_btn.setMaximumSize(100, 30)
+        # 경로선택 버튼 (동일 높이)
+        self.select_path_btn = QPushButton("경로 선택")
+        self.select_path_btn.setFixedSize(90, 35)  # 높이를 타이틀과 맞춤
+        self.select_path_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                font-size: 10pt;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
         self.select_path_btn.clicked.connect(self.select_base_path)
         title_layout.addWidget(self.select_path_btn)
         
-        # 상태 메시지 (버튼 옆)
+        # 상태 메시지 (동일 높이로 정렬)
         self.path_status_label = QLabel("")
-        self.path_status_label.setStyleSheet("color: #666; font-size: 10pt; margin-left: 10px;")
+        self.path_status_label.setFixedSize(150, 35)  # 타이틀과 동일한 높이
+        self.path_status_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.path_status_label.setStyleSheet("""
+            QLabel {
+                color: #28a745; 
+                font-size: 10pt; 
+                font-weight: bold; 
+                padding: 5px;
+                background-color: rgba(40, 167, 69, 0.1);
+                border-radius: 4px;
+            }
+        """)
         title_layout.addWidget(self.path_status_label)
         
-        # 날짜별 폴더 옵션
+        # 날짜별 폴더 옵션 (동일 높이)
         self.date_subfolder_check = QCheckBox("날짜별 하위폴더 사용")
         self.date_subfolder_check.setToolTip("활성화시 선택한 폴더 아래에 YYYY-MM-DD 폴더를 자동 생성합니다")
+        self.date_subfolder_check.setFixedHeight(35)  # 동일한 높이
+        self.date_subfolder_check.setStyleSheet("padding: 5px;")
         self.date_subfolder_check.stateChanged.connect(self.on_date_subfolder_changed)
         title_layout.addStretch()
         title_layout.addWidget(self.date_subfolder_check)
@@ -359,19 +389,16 @@ class MainWindow(QMainWindow):
         self.current_path_label = QLabel("경로가 설정되지 않았습니다")
         self.current_path_label.setStyleSheet("""
             QLabel {
-                background-color: #ffffff;
-                border: 2px solid #2196F3;
-                padding: 8px 12px;
-                border-radius: 6px;
-                font-family: 'Arial', 'Malgun Gothic', sans-serif;
-                font-size: 10pt;
-                color: #000000;
-                font-weight: normal;
+                background-color: white;
+                border: 1px solid #ccc;
+                padding: 10px;
+                border-radius: 4px;
+                font-family: Arial;
+                font-size: 11pt;
+                color: black;
             }
         """)
-        self.current_path_label.setMinimumHeight(35)
-        self.current_path_label.setMaximumHeight(35)
-        self.current_path_label.setWordWrap(False)
+        self.current_path_label.setMinimumHeight(40)
         self.current_path_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.current_path_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         path_display_layout.addWidget(self.current_path_label, 1)
@@ -581,13 +608,7 @@ class MainWindow(QMainWindow):
         
         file_layout.addLayout(pdf_layout)
         
-        # 출력 폴더는 작업 폴더로 자동 설정되므로 제거
-        output_info_layout = QHBoxLayout()
-        output_info_layout.addWidget(QLabel("결과 저장:"))
-        output_info_label = QLabel("작업 폴더에 자동 저장 (ordered_YYYYMMDD.pdf, match_report.csv)")
-        output_info_label.setStyleSheet("color: #666; font-style: italic; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background-color: #f9f9f9;")
-        output_info_layout.addWidget(output_info_label)
-        file_layout.addLayout(output_info_layout)
+        # 자동저장 안내 문구 제거됨
         
         file_group.setLayout(file_layout)
         layout.addWidget(file_group)
