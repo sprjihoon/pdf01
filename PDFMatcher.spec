@@ -14,6 +14,8 @@ a = Analysis(
         'PySide6.QtGui',
         'PySide6.QtWidgets',
         'pdfplumber',
+        'fitz',
+        'pymupdf',
         'pandas',
         'openpyxl',
         'pypdf',

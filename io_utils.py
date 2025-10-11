@@ -37,8 +37,8 @@ def load_excel(path):
     else:
         df = pd.read_excel(path, engine='openpyxl')
     
-    # 필수 컬럼 확인 (대소문자 무시)
-    required_cols = ['구매자명', '전화번호', '주소', '주문번호']
+    # 필수 컬럼 확인 (대소문자 무시) - 주문번호만 필수
+    required_cols = ['주문번호']
     df_cols_lower = {col.strip().lower(): col for col in df.columns}
     
     # 컬럼 매핑
@@ -46,22 +46,6 @@ def load_excel(path):
     
     # 다양한 컬럼명 패턴 정의
     column_patterns = {
-        '구매자명': [
-            'name', 'buyer', 'customer', '이름', '성명',
-            '구매자', '수령자명', '수령자', '받는사람', '받는분',
-            '고객명', '주문자명', '주문자'
-        ],
-        '전화번호': [
-            'phone', 'tel', 'mobile', '연락처', '핸드폰',
-            '전화', '휴대폰', '휴대전화', '휴대폰번호', '전화번호',
-            '연락처', 'contact', '수령자전화', '수령자휴대폰',
-            '수령자휴대폰번호', '수령자연락처'
-        ],
-        '주소': [
-            'address', 'addr', 'location', '주소',
-            '배송지', '배송주소', '수령지', '수령지주소',
-            '도착지', '배달주소', '받는주소'
-        ],
         '주문번호': [
             'order', 'ordernumber', 'ordernum', 'orderno', 'order_no',
             '주문번호', '주문', '오더', '오더번호', '주문num',
@@ -102,19 +86,17 @@ def load_excel(path):
                 f"엑셀 파일의 컬럼명을 확인하세요.\n\n"
                 f"현재 엑셀 파일의 컬럼: {available_cols}...\n\n"
                 f"지원하는 컬럼명 예시:\n"
-                f"  - 이름: {', '.join(column_patterns['구매자명'][:5])}, ...\n"
-                f"  - 전화: {', '.join(column_patterns['전화번호'][:5])}, ...\n"
-                f"  - 주소: {', '.join(column_patterns['주소'][:5])}, ..."
+                f"  - 주문번호: {', '.join(column_patterns['주문번호'][:5])}, ..."
             )
     
     # 컬럼 이름 통일
     df = df.rename(columns=col_mapping)
     
-    # 필수 컬럼만 선택
-    df = df[required_cols].copy()
+    # 주문번호 컬럼만 선택
+    df = df[['주문번호']].copy()
     
-    # 빈 행 제거
-    df = df.dropna(how='all')
+    # 빈 행 제거 (주문번호가 비어있는 행)
+    df = df.dropna(subset=['주문번호'])
     
     return df
 
@@ -199,10 +181,7 @@ def save_report(rows, out_csv_path):
                   '엑셀행번호': int,
                   '매칭페이지': int or 'UNMATCHED',
                   '점수': float,
-                  '매칭키': str (예: 'name+phone+addr+order'),
-                  '구매자명': str,
-                  '전화번호': str,
-                  '주소': str,
+                  '매칭키': str (예: 'order_exact'),
                   '주문번호': str
               }
         out_csv_path: 출력 CSV 경로
@@ -213,8 +192,8 @@ def save_report(rows, out_csv_path):
     # DataFrame 생성
     df = pd.DataFrame(rows)
     
-    # 컬럼 순서 정렬
-    columns = ['엑셀행번호', '매칭페이지', '점수', '매칭키', '구매자명', '전화번호', '주소', '주문번호']
+    # 컬럼 순서 정렬 (주문번호만)
+    columns = ['엑셀행번호', '매칭페이지', '점수', '매칭키', '주문번호']
     df = df[columns]
     
     # CSV 저장 (UTF-8 with BOM for Excel compatibility)
