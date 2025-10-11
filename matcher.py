@@ -329,17 +329,23 @@ def extract_order_numbers_from_text(text):
     """텍스트에서 주문번호 후보 추출"""
     candidates = []
     
-    # 주문번호 패턴: A-1234567 형식
-    pattern1 = re.findall(r'[A-Z]-\d{6,}', text)
+    # 주요 패턴: 15-20자리 긴 숫자 (실제 데이터 형태)
+    # 예: 0100012025100100075, 100012025100900021
+    pattern1 = re.findall(r'\d{15,20}', text)
     candidates.extend(pattern1)
     
-    # 주문번호 패턴: ORD-2024-001 형식
-    pattern2 = re.findall(r'[A-Z]{2,}-\d{4,}-\d{3,}', text)
+    # 호환성을 위한 기존 패턴들 (필요시)
+    # A-1234567 형식
+    pattern2 = re.findall(r'[A-Z]-\d{6,}', text)
     candidates.extend(pattern2)
     
-    # 주문번호 패턴: 20241009001 형식 (날짜+번호)
-    pattern3 = re.findall(r'20\d{6,}', text)
+    # ORD-2024-001 형식  
+    pattern3 = re.findall(r'[A-Z]{2,}-\d{4,}-\d{3,}', text)
     candidates.extend(pattern3)
+    
+    # 날짜+번호 형식
+    pattern4 = re.findall(r'20\d{6,}', text)
+    candidates.extend(pattern4)
     
     return candidates
 
