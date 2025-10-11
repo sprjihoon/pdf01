@@ -74,12 +74,14 @@ class ProcessingWorker(QThread):
                 row = df.iloc[row_idx]
                 detail = match_details.get(row_idx, {'page_idx': -1, 'score': 0, 'reason': 'no_match'})
                 if detail['page_idx'] >= 0:
+                    order_num = row.get('주문번호', 'N/A')
                     self.progress.emit(
-                        f"   엑셀 {row_idx+1}행 ({row['구매자명']}) → "
+                        f"   엑셀 {row_idx+1}행 (주문번호: {order_num}) → "
                         f"PDF {detail['page_idx']+1}페이지 (점수: {detail['score']:.1f})"
                     )
                 else:
-                    self.progress.emit(f"   엑셀 {row_idx+1}행 ({row['구매자명']}) → 매칭 실패")
+                    order_num = row.get('주문번호', 'N/A')
+                    self.progress.emit(f"   엑셀 {row_idx+1}행 (주문번호: {order_num}) → 매칭 실패")
             if len(df) > 10:
                 self.progress.emit(f"   ... 외 {len(df)-10}건")
             
@@ -209,7 +211,7 @@ class MainWindow(QMainWindow):
         excel_layout = QHBoxLayout()
         excel_layout.addWidget(QLabel("엑셀 파일:"))
         self.excel_edit = QLineEdit()
-        self.excel_edit.setPlaceholderText("구매자명, 전화번호, 주소 컬럼이 있는 엑셀 파일...")
+        self.excel_edit.setPlaceholderText("주문번호 컬럼이 있는 엑셀 파일...")
         excel_layout.addWidget(self.excel_edit)
         excel_btn = QPushButton("찾아보기")
         excel_btn.clicked.connect(self.browse_excel)
@@ -266,9 +268,9 @@ class MainWindow(QMainWindow):
         
         # 옵션 설명
         help_label = QLabel(
-            "💡 매칭 기준: 구매자명 + 전화번호 + 주소 (3가지 모두 일치해야 함)\n"
+            "💡 매칭 기준: 주문번호 (고유번호로 1:1 매칭)\n"
             "   • 기본: 정확 일치만 인정 (권장)\n"
-            "   • 유사도 매칭: 오타나 표기 차이가 있을 때 보조적으로 사용 (임계값 조정 가능)"
+            "   • 유사도 매칭: 주문번호에 오타가 있을 때 보조적으로 사용 (임계값 조정 가능)"
         )
         help_label.setStyleSheet("color: #555; font-size: 9pt; padding: 10px; background: #f5f5f5; border-radius: 5px;")
         option_layout.addWidget(help_label)

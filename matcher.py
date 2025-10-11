@@ -397,12 +397,12 @@ def extract_pages(pdf_path):
 
 def calc_match_score(excel_name, excel_phone, excel_addr, excel_order, page_info, use_fuzzy=False, threshold=90):
     """
-    엑셀 행과 PDF 페이지의 매칭 점수 계산 (최적화 버전)
+    엑셀 행과 PDF 페이지의 매칭 점수 계산 - 주문번호 기준 매칭
     
     Args:
-        excel_name: 정규화된 엑셀 이름
-        excel_phone: 정규화된 엑셀 전화번호
-        excel_addr: 정규화된 엑셀 주소
+        excel_name: 정규화된 엑셀 이름 (사용 안함)
+        excel_phone: 정규화된 엑셀 전화번호 (사용 안함)
+        excel_addr: 정규화된 엑셀 주소 (사용 안함)
         excel_order: 정규화된 엑셀 주문번호
         page_info: PageInfo 객체
         use_fuzzy: 유사도 매칭 사용 여부
@@ -411,64 +411,39 @@ def calc_match_score(excel_name, excel_phone, excel_addr, excel_order, page_info
     Returns:
         tuple: (score, reason)
             - score: 매칭 점수 (0-100)
-            - reason: 매칭 근거 ('name+phone+addr+order', 'fuzzy', 등)
+            - reason: 매칭 근거 ('order_exact', 'order_fuzzy', 등)
     """
-    # 정확 일치 확인
-    name_match = excel_name in page_info.norm_name_candidates
-    phone_match = excel_phone in page_info.norm_phone_list
-    addr_match = any(excel_addr in addr or addr in excel_addr 
-                     for addr in page_info.norm_addr_candidates)
+    # 주문번호가 비어있으면 매칭 불가
+    if not excel_order or not page_info.norm_order_candidates:
+        return 0, 'no_order_data'
+    
+    # 정확 일치 확인 (주문번호만)
     order_match = excel_order in page_info.norm_order_candidates
     
-    # 4가지 모두 일치하면 100점 (조기 종료)
-    if name_match and phone_match and addr_match and order_match:
-        return 100, 'name+phone+addr+order'
+    # 주문번호가 정확히 일치하면 100점 (조기 종료)
+    if order_match:
+        return 100, 'order_exact'
     
     # 유사도 매칭 사용하지 않으면 0점
     if not use_fuzzy:
         return 0, 'no_match'
     
-    # 빠른 전화번호 체크 (전화번호가 아예 없으면 스킵)
-    if not page_info.norm_phone_list or not excel_phone:
-        return 0, 'no_match'
-    
-    # 유사도 매칭 (최적화: 미리 최대값 계산)
-    max_score = 0
-    best_reason = 'no_match'
-    
-    # 전화번호 유사도 먼저 확인 (가장 정확한 기준)
-    best_phone_sim = max((fuzz.ratio(excel_phone, p) for p in page_info.norm_phone_list), default=0)
-    
-    # 전화번호 유사도가 너무 낮으면 조기 종료
-    if best_phone_sim < 70:
-        return 0, 'no_match'
-    
-    # 이름 유사도
-    best_name_sim = max((fuzz.ratio(excel_name, n) for n in page_info.norm_name_candidates), default=0) if page_info.norm_name_candidates else 0
-    
-    # 주소 유사도
-    best_addr_sim = max((fuzz.partial_ratio(excel_addr, a) for a in page_info.norm_addr_candidates), default=0) if page_info.norm_addr_candidates else 0
-    
-    # 주문번호 유사도
-    best_order_sim = max((fuzz.ratio(excel_order, o) for o in page_info.norm_order_candidates), default=0) if page_info.norm_order_candidates else 0
-    
-    # 평균 유사도
-    max_score = (best_name_sim + best_phone_sim + best_addr_sim + best_order_sim) / 4
-    best_reason = f'fuzzy(name:{best_name_sim:.0f},phone:{best_phone_sim:.0f},addr:{best_addr_sim:.0f},order:{best_order_sim:.0f})'
+    # 주문번호 유사도 매칭
+    best_order_sim = max((fuzz.ratio(excel_order, o) for o in page_info.norm_order_candidates), default=0)
     
     # 임계값 이상이면 점수 반환
-    if max_score >= threshold:
-        return max_score, best_reason
+    if best_order_sim >= threshold:
+        return best_order_sim, f'order_fuzzy({best_order_sim:.0f}%)'
     
     return 0, 'no_match'
 
 
 def match_rows_to_pages(df, pages, use_fuzzy=False, threshold=90):
     """
-    엑셀 행과 PDF 페이지를 매칭
+    엑셀 행과 PDF 페이지를 매칭 - 주문번호 기준
     
     Args:
-        df: 엑셀 DataFrame (구매자명, 전화번호, 주소, 주문번호 컬럼 포함)
+        df: 엑셀 DataFrame (주문번호 컬럼 포함)
         pages: List[PageInfo]
         use_fuzzy: 유사도 매칭 사용 여부
         threshold: 유사도 임계값
@@ -485,18 +460,15 @@ def match_rows_to_pages(df, pages, use_fuzzy=False, threshold=90):
     
     # 각 엑셀 행에 대해 매칭
     for row_idx, row in df.iterrows():
-        # 이름 후보 추출 (괄호 안 이름, 공백 구분 이름 등)
-        excel_name_candidates = extract_name_candidates(row['구매자명'])
-        excel_phone = normalize_phone(row['전화번호'])
-        excel_addr = normalize_addr(row['주소'])
+        # 주문번호만 정규화
         excel_order = normalize_order_number(row['주문번호'])
         
-        # 빈 값 체크 (이름 후보가 하나도 없거나 다른 필드가 비어있으면)
-        if not excel_name_candidates or not excel_phone or not excel_addr or not excel_order:
+        # 주문번호가 비어있으면 매칭 불가
+        if not excel_order:
             match_details[row_idx] = {
                 'page_idx': -1,
                 'score': 0,
-                'reason': 'empty_data'
+                'reason': 'empty_order_number'
             }
             continue
         
@@ -510,25 +482,20 @@ def match_rows_to_pages(df, pages, use_fuzzy=False, threshold=90):
             if page_info.index in used_pages:
                 continue
             
-            # 모든 이름 후보에 대해 시도 (가장 높은 점수 선택)
-            for excel_name in excel_name_candidates:
-                score, reason = calc_match_score(
-                    excel_name, excel_phone, excel_addr, excel_order,
-                    page_info, use_fuzzy, threshold
-                )
-                
-                if score > best_score:
-                    best_score = score
-                    best_page = page_info.index
-                    best_reason = reason
-                    
-                    # 완벽한 매칭을 찾으면 즉시 중단 (조기 종료)
-                    if score == 100:
-                        break
+            # 주문번호 기준으로 매칭 점수 계산
+            score, reason = calc_match_score(
+                "", "", "", excel_order,  # 이름, 전화번호, 주소는 빈 값으로 전달
+                page_info, use_fuzzy, threshold
+            )
             
-            # 완벽한 매칭을 찾았으면 다른 페이지 검색 중단
-            if best_score == 100:
-                break
+            if score > best_score:
+                best_score = score
+                best_page = page_info.index
+                best_reason = reason
+                
+                # 완벽한 매칭을 찾으면 즉시 중단 (조기 종료)
+                if score == 100:
+                    break
         
         # 매칭 결과 저장
         if best_score > 0:
