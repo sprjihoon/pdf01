@@ -743,7 +743,7 @@ class MainWindow(QMainWindow):
         
         self.order_number_edit = QLineEdit()
         self.order_number_edit.setPlaceholderText("예: 800017 (뒷자리만 입력)")
-        self.order_number_edit.setFixedWidth(500)  # 500px로 고정
+        self.order_number_edit.setMaximumWidth(500)  # 최대 500px
         self.order_number_edit.returnPressed.connect(self.search_order)  # Enter 키 지원
         order_input_layout.addWidget(self.order_number_edit)
         
