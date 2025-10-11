@@ -653,11 +653,12 @@ class MainWindow(QMainWindow):
         self.progress_bar.hide()
         progress_layout.addWidget(self.progress_bar)
         
-        # 로그
+        # 로그 (공간 확대)
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setMaximumHeight(250)
-        self.log_text.setStyleSheet("font-family: 'Consolas', monospace; font-size: 9pt;")
+        self.log_text.setMinimumHeight(350)  # 최소 높이 대폭 증가
+        self.log_text.setMaximumHeight(500)  # 최대 높이도 증가
+        self.log_text.setStyleSheet("font-family: 'Consolas', monospace; font-size: 10pt;")
         progress_layout.addWidget(self.log_text)
         
         progress_group.setLayout(progress_layout)
@@ -754,14 +755,15 @@ class MainWindow(QMainWindow):
         order_input_layout.addWidget(self.stop_search_btn)
         search_layout.addLayout(order_input_layout)
         
-        # 검색 결과 테이블
+        # 검색 결과 테이블 (공간 확대)
         self.search_result_table = QTableWidget()
         self.search_result_table.setColumnCount(6)
         self.search_result_table.setHorizontalHeaderLabels([
             "파일명", "문서날짜", "파일명날짜", "수정시간", "페이지", "선택기준"
         ])
         self.search_result_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.search_result_table.setMaximumHeight(150)
+        self.search_result_table.setMinimumHeight(180)  # 최소 높이 증가
+        self.search_result_table.setMaximumHeight(300)  # 최대 높이도 증가
         search_layout.addWidget(self.search_result_table)
         
         search_group.setLayout(search_layout)
@@ -871,8 +873,9 @@ class MainWindow(QMainWindow):
         
         self.search_log_text = QTextEdit()
         self.search_log_text.setReadOnly(True)
-        self.search_log_text.setMaximumHeight(200)
-        self.search_log_text.setStyleSheet("font-family: 'Consolas', monospace; font-size: 9pt;")
+        self.search_log_text.setMinimumHeight(280)  # 최소 높이 대폭 증가
+        self.search_log_text.setMaximumHeight(400)  # 최대 높이도 증가
+        self.search_log_text.setStyleSheet("font-family: 'Consolas', monospace; font-size: 10pt;")
         log_layout.addWidget(self.search_log_text)
         
         log_group.setLayout(log_layout)
