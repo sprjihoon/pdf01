@@ -212,9 +212,9 @@ def normalize_addr(text):
 def normalize_order_number(text):
     """
     주문번호 정규화
-    - 영문자와 숫자만 추출
-    - 대문자 변환
-    - 하이픈, 공백 등 특수문자 제거
+    - 숫자만 추출 후 형태 통일
+    - PDF: 0100012025100100075 → 100012025100100075 (앞자리 0 제거)
+    - 엑셀: 100012025100900021 → 100012025100900021 (그대로)
     """
     if not text or pd.isna(text):
         return ""
@@ -222,11 +222,12 @@ def normalize_order_number(text):
     text = str(text).strip()
     text = remove_special_chars(text)
     
-    # 영문자와 숫자만 추출
-    result = re.sub(r'[^a-zA-Z0-9]', '', text)
+    # 숫자만 추출
+    result = re.sub(r'[^0-9]', '', text)
     
-    # 대문자 변환
-    result = result.upper()
+    # 앞자리 0 제거 (010으로 시작하는 경우 01 제거)
+    if result.startswith('01') and len(result) >= 18:
+        result = result[1:]  # 맨 앞의 0 하나만 제거
     
     return result
 
