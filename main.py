@@ -709,13 +709,39 @@ class MainWindow(QMainWindow):
         order_input_layout = QHBoxLayout()
         order_input_layout.addWidget(QLabel("주문번호:"))
         self.order_number_edit = QLineEdit()
-        self.order_number_edit.setPlaceholderText("예: A-1234567")
+        self.order_number_edit.setPlaceholderText("예: 800017 (뒷자리만 입력 가능)")
+        self.order_number_edit.returnPressed.connect(self.search_order)  # Enter 키 지원
         order_input_layout.addWidget(self.order_number_edit)
+        
+        # 검색 버튼들
+        search_buttons_layout = QVBoxLayout()
         
         self.search_btn = QPushButton("🔍 검색")
         self.search_btn.setMinimumHeight(35)
         self.search_btn.clicked.connect(self.search_order)
-        order_input_layout.addWidget(self.search_btn)
+        search_buttons_layout.addWidget(self.search_btn)
+        
+        self.stop_search_btn = QPushButton("⏹️ 검색 중지")
+        self.stop_search_btn.setMinimumHeight(35)
+        self.stop_search_btn.setEnabled(False)
+        self.stop_search_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                font-weight: bold;
+                border-radius: 8px;
+            }
+            QPushButton:hover {
+                background-color: #d32f2f;
+            }
+            QPushButton:disabled {
+                background-color: #BDBDBD;
+            }
+        """)
+        self.stop_search_btn.clicked.connect(self.stop_search)
+        search_buttons_layout.addWidget(self.stop_search_btn)
+        
+        order_input_layout.addLayout(search_buttons_layout)
         search_layout.addLayout(order_input_layout)
         
         # 검색 결과 테이블
@@ -1046,9 +1072,11 @@ class MainWindow(QMainWindow):
             self.search_worker.terminate()
             self.search_worker.wait()
         
-        # UI 비활성화 및 진행률 표시
+        # UI 상태 변경: 검색 중 모드
         self.search_btn.setEnabled(False)
+        self.stop_search_btn.setEnabled(True)
         self.print_btn.setEnabled(False)
+        self.preview_btn.setEnabled(False)
         self.search_progress.show()
         self.search_progress.setMinimum(0)
         self.search_progress.setMaximum(0)  # Indeterminate
@@ -1065,8 +1093,9 @@ class MainWindow(QMainWindow):
     
     def on_search_finished(self, search_result):
         """검색 완료 처리"""
-        # UI 복원
+        # UI 상태 복원: 검색 완료 모드
         self.search_btn.setEnabled(True)
+        self.stop_search_btn.setEnabled(False)
         self.search_progress.hide()
         
         # 검색 시간 계산
@@ -1106,12 +1135,47 @@ class MainWindow(QMainWindow):
     
     def on_search_error(self, error_msg):
         """검색 오류 처리"""
-        # UI 복원
+        # UI 상태 복원: 검색 오류 모드
         self.search_btn.setEnabled(True)
+        self.stop_search_btn.setEnabled(False)
         self.search_progress.hide()
         
         self.search_log(error_msg)
         QMessageBox.critical(self, "검색 오류", error_msg)
+    
+    def stop_search(self):
+        """검색 중지"""
+        if self.search_worker and self.search_worker.isRunning():
+            self.search_log("⏹️ 검색 중지 요청...")
+            
+            # 스레드 종료
+            self.search_worker.terminate()
+            self.search_worker.wait(3000)  # 3초 대기
+            
+            # 강제 종료가 안되면 더 강력하게
+            if self.search_worker.isRunning():
+                self.search_worker.quit()
+                self.search_worker.wait()
+            
+            # UI 상태 복원: 중지 완료 모드
+            self.search_btn.setEnabled(True)
+            self.stop_search_btn.setEnabled(False)
+            self.search_progress.hide()
+            
+            # 검색 결과 클리어
+            self.search_result = None
+            self.clear_search_result()
+            self.print_btn.setEnabled(False)
+            self.preview_btn.setEnabled(False)
+            
+            self.search_log("✅ 검색이 중지되었습니다")
+            
+            # 검색 시간 계산 (중지된 경우)
+            if hasattr(self, 'search_start_time'):
+                elapsed = int((time.time() - self.search_start_time) * 1000)
+                self.search_log(f"⏱️ 중지된 검색 시간: {elapsed}ms")
+        else:
+            self.search_log("⚠️ 진행 중인 검색이 없습니다")
     
     def display_search_result(self, search_result):
         """검색 결과를 테이블에 표시"""
