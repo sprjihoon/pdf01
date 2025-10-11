@@ -361,15 +361,16 @@ class MainWindow(QMainWindow):
             QLabel {
                 background-color: #ffffff;
                 border: 2px solid #2196F3;
-                padding: 12px 15px;
+                padding: 8px 12px;
                 border-radius: 6px;
                 font-family: 'Arial', 'Malgun Gothic', sans-serif;
-                font-size: 12pt;
+                font-size: 10pt;
                 color: #000000;
-                font-weight: bold;
+                font-weight: normal;
             }
         """)
-        self.current_path_label.setMinimumHeight(45)
+        self.current_path_label.setMinimumHeight(35)
+        self.current_path_label.setMaximumHeight(35)
         self.current_path_label.setWordWrap(False)
         self.current_path_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.current_path_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
