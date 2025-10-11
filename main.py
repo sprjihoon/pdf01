@@ -328,8 +328,9 @@ class MainWindow(QMainWindow):
         # 경로 선택 영역
         path_select_layout = QHBoxLayout()
         
-        # 현재 경로 표시
+        # 현재 경로 표시 (개선된 레이아웃)
         path_select_layout.addWidget(QLabel("현재 경로:"))
+        
         self.current_path_label = QLabel("경로가 설정되지 않았습니다")
         self.current_path_label.setStyleSheet("""
             QLabel {
@@ -338,10 +339,13 @@ class MainWindow(QMainWindow):
                 padding: 8px;
                 border-radius: 4px;
                 font-family: 'Consolas', monospace;
+                font-size: 10pt;
             }
         """)
         self.current_path_label.setMinimumHeight(35)
-        path_select_layout.addWidget(self.current_path_label, 1)
+        self.current_path_label.setWordWrap(False)  # 줄바꿈 비활성화
+        self.current_path_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        path_select_layout.addWidget(self.current_path_label, 2)  # 더 많은 공간 할당
         
         # 경로 선택 버튼
         self.select_path_btn = QPushButton("📂 경로 선택")
@@ -457,21 +461,38 @@ class MainWindow(QMainWindow):
                     QMessageBox.critical(self, "경로 오류", message)
     
     def update_path_display(self, path: str):
-        """경로 표시 업데이트"""
+        """경로 표시 업데이트 - 개선된 버전"""
         if path:
-            # 경로가 너무 길면 축약 표시
+            # 경로 축약 로직 개선
             display_path = path
-            if len(display_path) > 60:
-                display_path = "..." + display_path[-57:]
+            
+            # Windows 드라이브 문자 처리
+            if len(display_path) > 70:
+                parts = display_path.split('\\')
+                if len(parts) > 3:
+                    # 드라이브:\...\마지막2개폴더 형태로 축약
+                    display_path = f"{parts[0]}\\...\\{parts[-2]}\\{parts[-1]}"
+                elif len(display_path) > 70:
+                    # 단순 축약
+                    display_path = "..." + display_path[-67:]
             
             self.current_path_label.setText(display_path)
-            self.current_path_label.setToolTip(path)
+            self.current_path_label.setToolTip(f"전체 경로: {path}")
             
             # 작업 경로 표시 (날짜 폴더 포함 시)
             working_path = config.get_working_path()
             if working_path != path:
-                self.path_status_label.setText(f"📁 작업 경로: {working_path}")
+                working_display = working_path
+                if len(working_display) > 50:
+                    working_parts = working_display.split('\\')
+                    if len(working_parts) > 2:
+                        working_display = f"...\\{working_parts[-2]}\\{working_parts[-1]}"
+                
+                self.path_status_label.setText(f"📁 실제 작업 경로: {working_display}")
                 self.path_status_label.setStyleSheet("color: #17a2b8; font-size: 9pt;")
+                self.path_status_label.setToolTip(f"전체 작업 경로: {working_path}")
+            else:
+                self.path_status_label.setToolTip("")
         else:
             self.current_path_label.setText("경로가 설정되지 않았습니다")
             self.current_path_label.setToolTip("")
@@ -540,7 +561,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(subtitle)
         
         # 파일 선택 그룹
-        file_group = QGroupBox("1️⃣ 파일 선택")
+        file_group = QGroupBox("📁 파일 선택")
         file_layout = QVBoxLayout()
         
         # 엑셀
@@ -577,7 +598,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(file_group)
         
         # 옵션 그룹
-        option_group = QGroupBox("2️⃣ 매칭 옵션")
+        option_group = QGroupBox("⚙️ 매칭 옵션")
         option_layout = QVBoxLayout()
         
         # 유사도 매칭 체크박스
@@ -633,7 +654,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.run_btn)
         
         # 진행 상황 그룹
-        progress_group = QGroupBox("3️⃣ 진행 상황")
+        progress_group = QGroupBox("📊 진행 상황")
         progress_layout = QVBoxLayout()
         
         # 프로그레스 바
@@ -688,7 +709,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(subtitle)
         
         # 검색 정보 표시 (폴더 선택 불필요 - 통합 경로 사용)
-        folder_group = QGroupBox("1️⃣ 검색 설정")
+        folder_group = QGroupBox("📋 검색 설정")
         folder_layout = QVBoxLayout()
         
         folder_info_layout = QHBoxLayout()
@@ -702,27 +723,29 @@ class MainWindow(QMainWindow):
         layout.addWidget(folder_group)
         
         # 검색 그룹
-        search_group = QGroupBox("2️⃣ 주문번호 검색")
+        search_group = QGroupBox("🔍 주문번호 검색")
         search_layout = QVBoxLayout()
         
-        # 주문번호 입력
+        # 주문번호 입력 및 검색
         order_input_layout = QHBoxLayout()
         order_input_layout.addWidget(QLabel("주문번호:"))
+        
         self.order_number_edit = QLineEdit()
-        self.order_number_edit.setPlaceholderText("예: 800017 (뒷자리만 입력 가능)")
+        self.order_number_edit.setPlaceholderText("예: 800017 (뒷자리만 입력)")
         self.order_number_edit.returnPressed.connect(self.search_order)  # Enter 키 지원
         order_input_layout.addWidget(self.order_number_edit)
         
-        # 검색 버튼들
-        search_buttons_layout = QVBoxLayout()
-        
+        # 검색 버튼
         self.search_btn = QPushButton("🔍 검색")
         self.search_btn.setMinimumHeight(35)
+        self.search_btn.setMinimumWidth(80)
         self.search_btn.clicked.connect(self.search_order)
-        search_buttons_layout.addWidget(self.search_btn)
+        order_input_layout.addWidget(self.search_btn)
         
-        self.stop_search_btn = QPushButton("⏹️ 검색 중지")
+        # 검색 중지 버튼 (검색 버튼 옆에)
+        self.stop_search_btn = QPushButton("⏹️ 중지")
         self.stop_search_btn.setMinimumHeight(35)
+        self.stop_search_btn.setMinimumWidth(80)
         self.stop_search_btn.setEnabled(False)
         self.stop_search_btn.setStyleSheet("""
             QPushButton {
@@ -730,6 +753,7 @@ class MainWindow(QMainWindow):
                 color: white;
                 font-weight: bold;
                 border-radius: 8px;
+                font-size: 11pt;
             }
             QPushButton:hover {
                 background-color: #d32f2f;
@@ -739,9 +763,7 @@ class MainWindow(QMainWindow):
             }
         """)
         self.stop_search_btn.clicked.connect(self.stop_search)
-        search_buttons_layout.addWidget(self.stop_search_btn)
-        
-        order_input_layout.addLayout(search_buttons_layout)
+        order_input_layout.addWidget(self.stop_search_btn)
         search_layout.addLayout(order_input_layout)
         
         # 검색 결과 테이블
@@ -758,7 +780,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(search_group)
         
         # 인쇄 설정 그룹
-        print_group = QGroupBox("3️⃣ 인쇄 설정")
+        print_group = QGroupBox("🖨️ 인쇄 설정")
         print_layout = QVBoxLayout()
         
         # 프린터 선택
@@ -841,7 +863,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(print_buttons_layout)
         
         # 로그 영역
-        log_group = QGroupBox("4️⃣ 작업 로그")
+        log_group = QGroupBox("📝 작업 로그")
         log_layout = QVBoxLayout()
         
         self.search_log_text = QTextEdit()
