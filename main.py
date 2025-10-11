@@ -347,7 +347,15 @@ class MainWindow(QMainWindow):
         self.path_status_label.setFixedSize(70, 32)
         self.path_status_label.setEnabled(False)  # 클릭 불가능
         self.path_status_label.setStyleSheet(
-            "QPushButton { font-size: 9pt; border: 1px solid #ccc; background: #f8f8f8; }"
+            "QPushButton { "
+            "font-size: 9pt; "
+            "border: 1px solid #ccc; "
+            "background: #f8f8f8; "
+            "padding: 0px; "
+            "margin: 0px; "
+            "min-height: 32px; "
+            "max-height: 32px; "
+            "} "
             "QPushButton:disabled { color: #28a745; font-weight: bold; }"
         )
         title_layout.addWidget(self.path_status_label)
@@ -400,14 +408,14 @@ class MainWindow(QMainWindow):
                 self.path_status_label.setText("✓ 유효")
                 self.path_status_label.setToolTip(message)
                 self.path_status_label.setStyleSheet(
-                    "QPushButton { font-size: 9pt; border: 1px solid #ccc; background: #f8f8f8; }"
+                    "QPushButton { font-size: 9pt; border: 1px solid #ccc; background: #f8f8f8; padding: 0px; margin: 0px; min-height: 32px; max-height: 32px; }"
                     "QPushButton:disabled { color: #28a745; font-weight: bold; }"
                 )
             else:
                 self.path_status_label.setText("⚠ 확인")
                 self.path_status_label.setToolTip(message)
                 self.path_status_label.setStyleSheet(
-                    "QPushButton { font-size: 9pt; border: 1px solid #ccc; background: #f8f8f8; }"
+                    "QPushButton { font-size: 9pt; border: 1px solid #ccc; background: #f8f8f8; padding: 0px; margin: 0px; min-height: 32px; max-height: 32px; }"
                     "QPushButton:disabled { color: #ffc107; font-weight: bold; }"
                 )
                 self.show_path_selection_dialog()
@@ -458,7 +466,7 @@ class MainWindow(QMainWindow):
                 self.path_status_label.setText("✓ 유효")
                 self.path_status_label.setToolTip(message)
                 self.path_status_label.setStyleSheet(
-                    "QPushButton { font-size: 9pt; border: 1px solid #ccc; background: #f8f8f8; }"
+                    "QPushButton { font-size: 9pt; border: 1px solid #ccc; background: #f8f8f8; padding: 0px; margin: 0px; min-height: 32px; max-height: 32px; }"
                     "QPushButton:disabled { color: #28a745; font-weight: bold; }"
                 )
                 self.log(f"✓ 작업 폴더 설정: {selected_path}")
@@ -467,7 +475,7 @@ class MainWindow(QMainWindow):
                 self.path_status_label.setText("✗ 오류")
                 self.path_status_label.setToolTip(message)
                 self.path_status_label.setStyleSheet(
-                    "QPushButton { font-size: 9pt; border: 1px solid #ccc; background: #f8f8f8; }"
+                    "QPushButton { font-size: 9pt; border: 1px solid #ccc; background: #f8f8f8; padding: 0px; margin: 0px; min-height: 32px; max-height: 32px; }"
                     "QPushButton:disabled { color: #dc3545; font-weight: bold; }"
                 )
                 
@@ -488,7 +496,7 @@ class MainWindow(QMainWindow):
                             self.path_status_label.setText("✓ 유효")
                             self.path_status_label.setToolTip(create_message)
                             self.path_status_label.setStyleSheet(
-                                "QPushButton { font-size: 9pt; border: 1px solid #ccc; background: #f8f8f8; }"
+                                "QPushButton { font-size: 9pt; border: 1px solid #ccc; background: #f8f8f8; padding: 0px; margin: 0px; min-height: 32px; max-height: 32px; }"
                                 "QPushButton:disabled { color: #28a745; font-weight: bold; }"
                             )
                         else:
