@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QPushButton, QLabel, QLineEdit, QFileDialog, QTextEdit,
     QProgressBar, QGroupBox, QMessageBox, QCheckBox, QSpinBox
 )
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QSettings
 from PySide6.QtGui import QFont
 
 from io_utils import load_excel, get_output_filenames, save_pdf, save_report, is_text_based_pdf
@@ -181,6 +181,9 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("PDF Excel Matcher - 구매자 순서로 PDF 자동 정렬")
         self.setMinimumSize(900, 750)
         
+        # 설정 관리자 (Windows 레지스트리, macOS/Linux는 적절한 위치에 저장)
+        self.settings = QSettings("PDFExcelMatcher", "PathSettings")
+        
         # 중앙 위젯
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -327,6 +330,34 @@ class MainWindow(QMainWindow):
         
         # 작업 스레드
         self.worker = None
+        
+        # 저장된 경로 로드
+        self.load_saved_paths()
+    
+    def load_saved_paths(self):
+        """저장된 경로들을 로드하여 UI에 설정"""
+        # 저장된 경로 가져오기
+        excel_path = self.settings.value("excel_path", "")
+        pdf_path = self.settings.value("pdf_path", "")
+        output_path = self.settings.value("output_path", "")
+        
+        # UI에 설정 (파일이 실제로 존재하는 경우만)
+        if excel_path and os.path.exists(excel_path):
+            self.excel_edit.setText(excel_path)
+            self.log(f"💾 저장된 엑셀 경로: {os.path.basename(excel_path)}")
+        
+        if pdf_path and os.path.exists(pdf_path):
+            self.pdf_edit.setText(pdf_path)
+            self.log(f"💾 저장된 PDF 경로: {os.path.basename(pdf_path)}")
+        
+        if output_path and os.path.exists(output_path):
+            self.output_edit.setText(output_path)
+            self.log(f"💾 저장된 출력 폴더: {output_path}")
+    
+    def save_path(self, key, path):
+        """경로를 설정에 저장"""
+        self.settings.setValue(key, path)
+        self.settings.sync()  # 즉시 저장
     
     def on_fuzzy_changed(self, state):
         """유사도 매칭 체크박스 변경 이벤트"""
@@ -334,29 +365,44 @@ class MainWindow(QMainWindow):
     
     def browse_excel(self):
         """엑셀 파일 찾아보기"""
+        # 이전 경로가 있으면 해당 디렉토리에서 시작
+        current_path = self.excel_edit.text()
+        start_dir = os.path.dirname(current_path) if current_path and os.path.exists(current_path) else ""
+        
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "엑셀 파일 선택", "",
+            self, "엑셀 파일 선택", start_dir,
             "Excel Files (*.xlsx *.xls);;All Files (*)"
         )
         if file_path:
             self.excel_edit.setText(file_path)
+            self.save_path("excel_path", file_path)  # 경로 저장
             self.log(f"✓ 엑셀 선택: {os.path.basename(file_path)}")
     
     def browse_pdf(self):
         """PDF 파일 찾아보기"""
+        # 이전 경로가 있으면 해당 디렉토리에서 시작
+        current_path = self.pdf_edit.text()
+        start_dir = os.path.dirname(current_path) if current_path and os.path.exists(current_path) else ""
+        
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "PDF 파일 선택", "",
+            self, "PDF 파일 선택", start_dir,
             "PDF Files (*.pdf);;All Files (*)"
         )
         if file_path:
             self.pdf_edit.setText(file_path)
+            self.save_path("pdf_path", file_path)  # 경로 저장
             self.log(f"✓ PDF 선택: {os.path.basename(file_path)}")
     
     def browse_output(self):
         """출력 폴더 찾아보기"""
-        folder_path = QFileDialog.getExistingDirectory(self, "출력 폴더 선택")
+        # 이전 경로가 있으면 해당 디렉토리에서 시작
+        current_path = self.output_edit.text()
+        start_dir = current_path if current_path and os.path.exists(current_path) else ""
+        
+        folder_path = QFileDialog.getExistingDirectory(self, "출력 폴더 선택", start_dir)
         if folder_path:
             self.output_edit.setText(folder_path)
+            self.save_path("output_path", folder_path)  # 경로 저장
             self.log(f"✓ 출력 폴더: {folder_path}")
     
     def log(self, message):
