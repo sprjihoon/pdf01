@@ -325,42 +325,52 @@ class MainWindow(QMainWindow):
         
         path_layout.addLayout(title_layout)
         
-        # 경로 선택 영역
-        path_select_layout = QHBoxLayout()
+        # 경로 선택 영역을 세로 레이아웃으로 변경 (더 넓은 공간)
+        path_info_layout = QVBoxLayout()
         
-        # 현재 경로 표시 (개선된 레이아웃)
-        path_select_layout.addWidget(QLabel("현재 경로:"))
+        # 상단: 현재 경로 표시 (전체 폭 사용)
+        current_path_layout = QHBoxLayout()
+        current_path_layout.addWidget(QLabel("현재 경로:"))
         
         self.current_path_label = QLabel("경로가 설정되지 않았습니다")
         self.current_path_label.setStyleSheet("""
             QLabel {
                 background-color: white;
                 border: 1px solid #ccc;
-                padding: 8px;
+                padding: 10px;
                 border-radius: 4px;
                 font-family: 'Consolas', monospace;
                 font-size: 10pt;
+                min-width: 500px;
             }
         """)
-        self.current_path_label.setMinimumHeight(35)
-        self.current_path_label.setWordWrap(False)  # 줄바꿈 비활성화
+        self.current_path_label.setMinimumHeight(40)
+        self.current_path_label.setWordWrap(False)
         self.current_path_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        path_select_layout.addWidget(self.current_path_label, 2)  # 더 많은 공간 할당
+        self.current_path_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        current_path_layout.addWidget(self.current_path_label, 1)
+        path_info_layout.addLayout(current_path_layout)
+        
+        # 하단: 버튼들
+        button_layout = QHBoxLayout()
         
         # 경로 선택 버튼
         self.select_path_btn = QPushButton("📂 경로 선택")
-        self.select_path_btn.setMinimumSize(100, 35)
+        self.select_path_btn.setMinimumSize(120, 35)
         self.select_path_btn.clicked.connect(self.select_base_path)
-        path_select_layout.addWidget(self.select_path_btn)
+        button_layout.addWidget(self.select_path_btn)
         
         # 최근 경로 콤보박스
         self.recent_paths_combo = QComboBox()
-        self.recent_paths_combo.setMinimumWidth(150)
+        self.recent_paths_combo.setMinimumWidth(200)
         self.recent_paths_combo.setToolTip("최근 사용한 경로")
         self.recent_paths_combo.currentTextChanged.connect(self.on_recent_path_selected)
-        path_select_layout.addWidget(self.recent_paths_combo)
+        button_layout.addWidget(self.recent_paths_combo)
         
-        path_layout.addLayout(path_select_layout)
+        button_layout.addStretch()  # 오른쪽 여백
+        path_info_layout.addLayout(button_layout)
+        
+        path_layout.addLayout(path_info_layout)
         
         # 상태 메시지
         self.path_status_label = QLabel("")
@@ -466,15 +476,18 @@ class MainWindow(QMainWindow):
             # 경로 축약 로직 개선
             display_path = path
             
-            # Windows 드라이브 문자 처리
-            if len(display_path) > 70:
+            # 경로 축약 로직을 더욱 관대하게 수정 (더 긴 경로 허용)
+            if len(display_path) > 120:  # 120자까지 허용 (더욱 확장)
                 parts = display_path.split('\\')
-                if len(parts) > 3:
+                if len(parts) > 4:
+                    # 드라이브:\...\마지막3개폴더 형태로 축약
+                    display_path = f"{parts[0]}\\...\\{parts[-3]}\\{parts[-2]}\\{parts[-1]}"
+                elif len(parts) > 3:
                     # 드라이브:\...\마지막2개폴더 형태로 축약
                     display_path = f"{parts[0]}\\...\\{parts[-2]}\\{parts[-1]}"
-                elif len(display_path) > 70:
-                    # 단순 축약
-                    display_path = "..." + display_path[-67:]
+                else:
+                    # 단순 축약 (더 많이 표시)
+                    display_path = "..." + display_path[-117:]
             
             self.current_path_label.setText(display_path)
             self.current_path_label.setToolTip(f"전체 경로: {path}")
@@ -714,8 +727,8 @@ class MainWindow(QMainWindow):
         
         folder_info_layout = QHBoxLayout()
         folder_info_layout.addWidget(QLabel("검색 대상:"))
-        search_info_label = QLabel("상단에 설정된 작업 폴더에서 PDF 파일 검색")
-        search_info_label.setStyleSheet("color: #666; font-style: italic; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background-color: #f9f9f9;")
+        search_info_label = QLabel("상단에 설정된 작업 폴더에서 PDF 파일 검색\n💡 원본 PDF가 있는 폴더로 설정하세요! (예: 카카오톡 받은 파일)")
+        search_info_label.setStyleSheet("color: #666; font-style: italic; padding: 10px; border: 1px solid #17a2b8; border-radius: 4px; background-color: #e3f2fd;")
         folder_info_layout.addWidget(search_info_label)
         folder_layout.addLayout(folder_info_layout)
         
