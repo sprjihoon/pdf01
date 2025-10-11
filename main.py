@@ -322,7 +322,7 @@ class MainWindow(QMainWindow):
         path_layout.setSpacing(12)
         path_layout.setContentsMargins(15, 15, 15, 15)  # 내부 여백 확대
         
-        # 제목
+        # 제목 및 경로선택 버튼
         title_layout = QHBoxLayout()
         title_label = QLabel("📂 통합 작업 경로")
         title_font = QFont()
@@ -330,6 +330,18 @@ class MainWindow(QMainWindow):
         title_font.setBold(True)
         title_label.setFont(title_font)
         title_layout.addWidget(title_label)
+        
+        # 경로선택 버튼 (타이틀 바로 옆)
+        self.select_path_btn = QPushButton("📂 경로 선택")
+        self.select_path_btn.setMinimumSize(100, 30)
+        self.select_path_btn.setMaximumSize(100, 30)
+        self.select_path_btn.clicked.connect(self.select_base_path)
+        title_layout.addWidget(self.select_path_btn)
+        
+        # 상태 메시지 (버튼 옆)
+        self.path_status_label = QLabel("")
+        self.path_status_label.setStyleSheet("color: #666; font-size: 10pt; margin-left: 10px;")
+        title_layout.addWidget(self.path_status_label)
         
         # 날짜별 폴더 옵션
         self.date_subfolder_check = QCheckBox("날짜별 하위폴더 사용")
@@ -340,9 +352,9 @@ class MainWindow(QMainWindow):
         
         path_layout.addLayout(title_layout)
         
-        # 경로 선택 영역 (한 줄로 깔끔하게)
-        path_select_layout = QHBoxLayout()
-        path_select_layout.addWidget(QLabel("현재 경로:"))
+        # 현재 경로 표시만 (단순하게)
+        path_display_layout = QHBoxLayout()
+        path_display_layout.addWidget(QLabel("현재 경로:"))
         
         self.current_path_label = QLabel("경로가 설정되지 않았습니다")
         self.current_path_label.setStyleSheet("""
@@ -361,20 +373,9 @@ class MainWindow(QMainWindow):
         self.current_path_label.setWordWrap(False)
         self.current_path_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.current_path_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        path_select_layout.addWidget(self.current_path_label, 1)
+        path_display_layout.addWidget(self.current_path_label, 1)
         
-        # 경로 선택 버튼 (바로 옆에 붙이기)
-        self.select_path_btn = QPushButton("📂 경로 선택")
-        self.select_path_btn.setMinimumSize(100, 45)
-        self.select_path_btn.clicked.connect(self.select_base_path)
-        path_select_layout.addWidget(self.select_path_btn, 0)
-        
-        path_layout.addLayout(path_select_layout)
-        
-        # 상태 메시지
-        self.path_status_label = QLabel("")
-        self.path_status_label.setStyleSheet("color: #666; font-size: 9pt; margin-top: 5px;")
-        path_layout.addWidget(self.path_status_label)
+        path_layout.addLayout(path_display_layout)
         
         parent_layout.addWidget(path_frame)
         
@@ -549,27 +550,33 @@ class MainWindow(QMainWindow):
         file_group = QGroupBox("📁 파일 선택")
         file_layout = QVBoxLayout()
         
-        # 엑셀
+        # 엑셀 (고정 폭)
         excel_layout = QHBoxLayout()
         excel_layout.addWidget(QLabel("엑셀 파일:"))
         self.excel_edit = QLineEdit()
         self.excel_edit.setPlaceholderText("주문번호 컬럼이 있는 엑셀 파일...")
+        self.excel_edit.setFixedWidth(500)  # 고정 폭으로 설정
         excel_layout.addWidget(self.excel_edit)
         excel_btn = QPushButton("찾아보기")
+        excel_btn.setFixedWidth(100)  # 고정 폭
         excel_btn.clicked.connect(self.browse_excel)
         excel_layout.addWidget(excel_btn)
+        excel_layout.addStretch()  # 오른쪽 여백
         
         file_layout.addLayout(excel_layout)
         
-        # PDF
+        # PDF (고정 폭)
         pdf_layout = QHBoxLayout()
         pdf_layout.addWidget(QLabel("PDF 파일:"))
         self.pdf_edit = QLineEdit()
         self.pdf_edit.setPlaceholderText("정렬할 PDF 파일 (텍스트 기반)...")
+        self.pdf_edit.setFixedWidth(500)  # 고정 폭으로 설정
         pdf_layout.addWidget(self.pdf_edit)
         pdf_btn = QPushButton("찾아보기")
+        pdf_btn.setFixedWidth(100)  # 고정 폭
         pdf_btn.clicked.connect(self.browse_pdf)
         pdf_layout.addWidget(pdf_btn)
+        pdf_layout.addStretch()  # 오른쪽 여백
         
         file_layout.addLayout(pdf_layout)
         
