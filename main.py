@@ -340,62 +340,36 @@ class MainWindow(QMainWindow):
         
         path_layout.addLayout(title_layout)
         
-        # 경로 선택 영역을 세로 레이아웃으로 변경 (더 넓은 공간)
-        path_info_layout = QVBoxLayout()
-        
-        # 상단: 현재 경로 표시 (완전 개선된 레이아웃)
-        current_path_layout = QVBoxLayout()  # 세로로 변경하여 더 넓은 공간
-        
-        path_label = QLabel("현재 경로:")
-        path_label.setStyleSheet("font-weight: bold; margin-bottom: 5px;")
-        current_path_layout.addWidget(path_label)
+        # 경로 선택 영역 (한 줄로 깔끔하게)
+        path_select_layout = QHBoxLayout()
+        path_select_layout.addWidget(QLabel("현재 경로:"))
         
         self.current_path_label = QLabel("경로가 설정되지 않았습니다")
         self.current_path_label.setStyleSheet("""
             QLabel {
                 background-color: #ffffff;
                 border: 2px solid #2196F3;
-                padding: 20px;
-                border-radius: 8px;
+                padding: 12px 15px;
+                border-radius: 6px;
                 font-family: 'Arial', 'Malgun Gothic', sans-serif;
-                font-size: 14pt;
+                font-size: 12pt;
                 color: #000000;
                 font-weight: bold;
-                text-align: left;
             }
         """)
-        self.current_path_label.setMinimumHeight(65)
-        self.current_path_label.setMaximumHeight(65)
+        self.current_path_label.setMinimumHeight(45)
         self.current_path_label.setWordWrap(False)
         self.current_path_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.current_path_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        path_select_layout.addWidget(self.current_path_label, 1)
         
-        # 텍스트 마진 설정
-        self.current_path_label.setContentsMargins(5, 5, 5, 5)
-        self.current_path_label.setIndent(10)  # 텍스트 들여쓰기
-        current_path_layout.addWidget(self.current_path_label)
-        path_info_layout.addLayout(current_path_layout)
-        
-        # 하단: 버튼들
-        button_layout = QHBoxLayout()
-        
-        # 경로 선택 버튼
+        # 경로 선택 버튼 (바로 옆에 붙이기)
         self.select_path_btn = QPushButton("📂 경로 선택")
-        self.select_path_btn.setMinimumSize(120, 35)
+        self.select_path_btn.setMinimumSize(100, 45)
         self.select_path_btn.clicked.connect(self.select_base_path)
-        button_layout.addWidget(self.select_path_btn)
+        path_select_layout.addWidget(self.select_path_btn, 0)
         
-        # 최근 경로 콤보박스
-        self.recent_paths_combo = QComboBox()
-        self.recent_paths_combo.setMinimumWidth(200)
-        self.recent_paths_combo.setToolTip("최근 사용한 경로")
-        self.recent_paths_combo.currentTextChanged.connect(self.on_recent_path_selected)
-        button_layout.addWidget(self.recent_paths_combo)
-        
-        button_layout.addStretch()  # 오른쪽 여백
-        path_info_layout.addLayout(button_layout)
-        
-        path_layout.addLayout(path_info_layout)
+        path_layout.addLayout(path_select_layout)
         
         # 상태 메시지
         self.path_status_label = QLabel("")
@@ -404,8 +378,7 @@ class MainWindow(QMainWindow):
         
         parent_layout.addWidget(path_frame)
         
-        # 최근 경로 목록 업데이트
-        self.update_recent_paths_combo()
+        # 최근 경로 기능 제거함
     
     def check_initial_path(self):
         """초기 경로 설정 확인 및 로드"""
@@ -535,33 +508,7 @@ class MainWindow(QMainWindow):
             self.current_path_label.setText("경로가 설정되지 않았습니다")
             self.current_path_label.setToolTip("")
     
-    def update_recent_paths_combo(self):
-        """최근 경로 콤보박스 업데이트"""
-        self.recent_paths_combo.blockSignals(True)
-        self.recent_paths_combo.clear()
-        
-        recent_paths = config.get_recent_paths()
-        if recent_paths:
-            self.recent_paths_combo.addItem("최근 경로 선택...", "")
-            for path in recent_paths:
-                display_name = os.path.basename(path) if os.path.basename(path) else path
-                self.recent_paths_combo.addItem(f"📁 {display_name}", path)
-        
-        self.recent_paths_combo.blockSignals(False)
-    
-    def on_recent_path_selected(self, text):
-        """최근 경로 선택 이벤트"""
-        if not text or text == "최근 경로 선택...":
-            return
-        
-        # 현재 선택된 경로 가져오기
-        selected_path = self.recent_paths_combo.currentData()
-        if selected_path and os.path.exists(selected_path):
-            config.set_base_path(selected_path)
-            self.update_path_display(selected_path)
-            self.update_recent_paths_combo()
-            self.path_status_label.setText("✅ 최근 경로로 변경되었습니다")
-            self.path_status_label.setStyleSheet("color: #28a745; font-size: 9pt;")
+    # 최근 경로 기능 제거됨
     
     def on_date_subfolder_changed(self, state):
         """날짜별 하위폴더 옵션 변경"""
@@ -672,16 +619,17 @@ class MainWindow(QMainWindow):
         option_group.setLayout(option_layout)
         layout.addWidget(option_group)
         
-        # 실행 버튼
-        self.run_btn = QPushButton("▶️  PDF 정렬 실행")
-        self.run_btn.setMinimumHeight(55)
+        # 실행 버튼 (크기 축소)
+        self.run_btn = QPushButton("▶️ PDF 정렬 실행")
+        self.run_btn.setMinimumHeight(40)
+        self.run_btn.setMaximumHeight(40)
         self.run_btn.setStyleSheet("""
             QPushButton {
                 background-color: #2196F3;
                 color: white;
-                font-size: 15pt;
+                font-size: 12pt;
                 font-weight: bold;
-                border-radius: 8px;
+                border-radius: 6px;
             }
             QPushButton:hover {
                 background-color: #1976D2;
@@ -737,7 +685,7 @@ class MainWindow(QMainWindow):
         # 제목
         title = QLabel("🔍 주문번호 검색 & 인쇄")
         title_font = QFont()
-        title_font.setPointSize(18)
+        title_font.setPointSize(14)  # 18 → 14로 축소
         title_font.setBold(True)
         title.setFont(title_font)
         title.setAlignment(Qt.AlignCenter)
@@ -871,16 +819,17 @@ class MainWindow(QMainWindow):
         # 인쇄 버튼들
         print_buttons_layout = QHBoxLayout()
         
-        self.preview_btn = QPushButton("👀 미리보기 & 인쇄")
-        self.preview_btn.setMinimumHeight(45)
+        self.preview_btn = QPushButton("👀 미리보기")
+        self.preview_btn.setMinimumHeight(35)
+        self.preview_btn.setMaximumHeight(35)
         self.preview_btn.setEnabled(False)
         self.preview_btn.setStyleSheet("""
             QPushButton {
                 background-color: #2196F3;
                 color: white;
-                font-size: 13pt;
+                font-size: 11pt;
                 font-weight: bold;
-                border-radius: 8px;
+                border-radius: 6px;
             }
             QPushButton:hover {
                 background-color: #1976D2;
@@ -890,18 +839,19 @@ class MainWindow(QMainWindow):
             }
         """)
         self.preview_btn.clicked.connect(self.preview_order)
-        print_buttons_layout.addWidget(self.preview_btn, 2)
+        print_buttons_layout.addWidget(self.preview_btn)
         
         self.print_btn = QPushButton("⚡ 빠른 인쇄")
-        self.print_btn.setMinimumHeight(45)
+        self.print_btn.setMinimumHeight(35)
+        self.print_btn.setMaximumHeight(35)
         self.print_btn.setEnabled(False)
         self.print_btn.setStyleSheet("""
             QPushButton {
                 background-color: #4CAF50;
                 color: white;
-                font-size: 13pt;
+                font-size: 11pt;
                 font-weight: bold;
-                border-radius: 8px;
+                border-radius: 6px;
             }
             QPushButton:hover {
                 background-color: #45a049;
@@ -911,7 +861,7 @@ class MainWindow(QMainWindow):
             }
         """)
         self.print_btn.clicked.connect(self.print_order_direct)
-        print_buttons_layout.addWidget(self.print_btn, 1)
+        print_buttons_layout.addWidget(self.print_btn)
         
         layout.addLayout(print_buttons_layout)
         
