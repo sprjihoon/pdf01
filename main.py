@@ -305,21 +305,12 @@ class MainWindow(QMainWindow):
     
     def create_base_path_section(self, parent_layout):
         """상단 통합 경로 선택 영역 생성"""
-        # 구분선이 있는 프레임 (여백 최소화)
-        path_frame = QFrame()
-        path_frame.setFrameStyle(QFrame.StyledPanel)
-        path_frame.setStyleSheet("""
-            QFrame {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
-                border-radius: 6px;
-                margin-bottom: 10px;
-            }
-        """)
+        # 프레임 박스 제거 - 위젯만 사용
+        path_frame = QWidget()
         
         path_layout = QVBoxLayout(path_frame)
         path_layout.setSpacing(8)  # 행간 간격 축소
-        path_layout.setContentsMargins(10, 10, 10, 10)  # 여백 축소
+        path_layout.setContentsMargins(0, 5, 0, 10)  # 여백 최소화
         
         # 제목, 경로선택, 상태 - 한 줄로 정렬 (모든 요소 30px 높이)
         title_layout = QHBoxLayout()
