@@ -343,11 +343,13 @@ class MainWindow(QMainWindow):
         self.select_path_btn.clicked.connect(self.select_base_path)
         title_layout.addWidget(self.select_path_btn)
         
-        # 상태 메시지 (동일 높이로 정렬)
+        # 상태 메시지 (버튼과 동일 크기의 박스)
         self.path_status_label = QLabel("")
-        self.path_status_label.setFixedHeight(30)
-        self.path_status_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.path_status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.path_status_label.setFixedSize(90, 30)
+        self.path_status_label.setAlignment(Qt.AlignCenter)
+        self.path_status_label.setStyleSheet(
+            "border: 1px solid #ced4da; border-radius: 4px; background: #ffffff; color: #28a745; font-weight: bold;"
+        )
         title_layout.addWidget(self.path_status_label)
         
         # 날짜별 폴더 옵션 (동일 높이)
@@ -390,11 +392,13 @@ class MainWindow(QMainWindow):
             is_valid, message = config.validate_base_path(base_path)
             if is_valid:
                 self.update_path_display(base_path)
-                self.path_status_label.setText(f"✅ {message}")
-                self.path_status_label.setStyleSheet("color: #28a745; font-size: 9pt;")
+                self.path_status_label.setText("유효")
+                self.path_status_label.setToolTip(message)
+                self.path_status_label.setStyleSheet("border: 1px solid #ced4da; border-radius: 4px; background: #ffffff; color: #28a745; font-weight: bold;")
             else:
-                self.path_status_label.setText(f"⚠️ {message}")
-                self.path_status_label.setStyleSheet("color: #ffc107; font-size: 9pt;")
+                self.path_status_label.setText("확인")
+                self.path_status_label.setToolTip(message)
+                self.path_status_label.setStyleSheet("border: 1px solid #ced4da; border-radius: 4px; background: #ffffff; color: #ffc107; font-weight: bold;")
                 self.show_path_selection_dialog()
         else:
             # 경로가 설정되지 않았으면 선택 요청
@@ -440,13 +444,15 @@ class MainWindow(QMainWindow):
                 config.set_base_path(selected_path)
                 self.update_path_display(selected_path)
                 self.update_recent_paths_combo()
-                self.path_status_label.setText(f"✅ {message}")
-                self.path_status_label.setStyleSheet("color: #28a745; font-size: 9pt;")
+                self.path_status_label.setText("유효")
+                self.path_status_label.setToolTip(message)
+                self.path_status_label.setStyleSheet("border: 1px solid #ced4da; border-radius: 4px; background: #ffffff; color: #28a745; font-weight: bold;")
                 self.log(f"✓ 작업 폴더 설정: {selected_path}")
                 self.search_log(f"✓ 작업 폴더 설정: {selected_path}")
             else:
-                self.path_status_label.setText(f"❌ {message}")
-                self.path_status_label.setStyleSheet("color: #dc3545; font-size: 9pt;")
+                self.path_status_label.setText("오류")
+                self.path_status_label.setToolTip(message)
+                self.path_status_label.setStyleSheet("border: 1px solid #ced4da; border-radius: 4px; background: #ffffff; color: #dc3545; font-weight: bold;")
                 
                 # 폴더 생성 제안
                 if "존재하지 않습니다" in message:
@@ -462,8 +468,9 @@ class MainWindow(QMainWindow):
                             config.set_base_path(selected_path)
                             self.update_path_display(selected_path)
                             self.update_recent_paths_combo()
-                            self.path_status_label.setText(f"✅ {create_message}")
-                            self.path_status_label.setStyleSheet("color: #28a745; font-size: 9pt;")
+                            self.path_status_label.setText("유효")
+                            self.path_status_label.setToolTip(create_message)
+                            self.path_status_label.setStyleSheet("border: 1px solid #ced4da; border-radius: 4px; background: #ffffff; color: #28a745; font-weight: bold;")
                         else:
                             QMessageBox.critical(self, "오류", create_message)
                 else:
@@ -492,17 +499,10 @@ class MainWindow(QMainWindow):
             self.current_path_label.setText(display_path)
             self.current_path_label.setToolTip(f"전체 경로: {path}")
             
-            # 작업 경로 표시 (날짜 폴더 포함 시)
+            # 작업 경로 표시 (날짜 폴더 포함 시) → 상태 박스는 간단 텍스트만 유지
             working_path = config.get_working_path()
             if working_path != path:
-                working_display = working_path
-                if len(working_display) > 50:
-                    working_parts = working_display.split('\\')
-                    if len(working_parts) > 2:
-                        working_display = f"...\\{working_parts[-2]}\\{working_parts[-1]}"
-                
-                self.path_status_label.setText(f"📁 실제 작업 경로: {working_display}")
-                self.path_status_label.setToolTip(f"전체 작업 경로: {working_path}")
+                self.path_status_label.setToolTip(f"실제 작업 경로: {working_path}")
             else:
                 self.path_status_label.setToolTip("")
         else:
