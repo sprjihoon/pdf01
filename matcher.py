@@ -439,13 +439,32 @@ def calc_match_score(excel_name, excel_phone, excel_addr, excel_order, page_info
     if not excel_order or not page_info.norm_order_candidates:
         return 0, 'no_order_data'
     
-    # 정확 일치 확인 - 우선순위별로 점수 차등 부여
-    if excel_order in page_info.norm_order_candidates:
-        # 첫 번째 후보 (가장 빈번한 주문번호)와 일치하면 최고점
-        if page_info.norm_order_candidates and excel_order == page_info.norm_order_candidates[0]:
-            return 100, 'order_exact_primary'
-        else:
-            return 95, 'order_exact_secondary'
+    # 매칭 확인 - 정확 일치 우선, 부분 일치 허용
+    for i, pdf_order in enumerate(page_info.norm_order_candidates):
+        # 1. 정확 일치 (최고 점수)
+        if excel_order == pdf_order:
+            if i == 0:  # 첫 번째 후보
+                return 100, 'order_exact_primary'
+            else:
+                return 95, 'order_exact_secondary'
+        
+        # 2. 부분 일치 (높은 점수)
+        # 사용자 입력이 PDF 주문번호에 포함되거나, PDF 주문번호가 사용자 입력에 포함
+        if (len(excel_order) >= 6 and len(pdf_order) >= 6):  # 최소 6자리는 있어야 함
+            if excel_order in pdf_order or pdf_order in excel_order:
+                # 길이가 비슷할수록 높은 점수
+                length_diff = abs(len(excel_order) - len(pdf_order))
+                if length_diff <= 2:  # 길이 차이 2자리 이내
+                    score = 90 - length_diff  # 88-90점
+                elif length_diff <= 4:  # 길이 차이 4자리 이내
+                    score = 85 - (length_diff - 2)  # 83-85점
+                else:
+                    score = 80  # 기본 부분 매칭 점수
+                
+                if i == 0:  # 첫 번째 후보
+                    return score, f'order_partial_primary(diff:{length_diff})'
+                else:
+                    return score - 5, f'order_partial_secondary(diff:{length_diff})'
     
     # 유사도 매칭 사용하지 않으면 0점
     if not use_fuzzy:
