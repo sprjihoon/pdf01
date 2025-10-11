@@ -386,21 +386,11 @@ class MainWindow(QMainWindow):
         path_display_layout = QHBoxLayout()
         path_display_layout.addWidget(QLabel("현재 경로:"))
         
-        self.current_path_label = QLabel("경로가 설정되지 않았습니다")
-        self.current_path_label.setStyleSheet("""
-            QLabel {
-                background-color: white;
-                border: 1px solid #ccc;
-                padding: 10px;
-                border-radius: 4px;
-                font-family: Arial;
-                font-size: 11pt;
-                color: black;
-            }
-        """)
-        self.current_path_label.setMinimumHeight(40)
-        self.current_path_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.current_path_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        # 엑셀 파일 입력창과 동일한 스타일로 변경
+        self.current_path_label = QLineEdit()
+        self.current_path_label.setText("경로가 설정되지 않았습니다")
+        self.current_path_label.setReadOnly(True)
+        self.current_path_label.setPlaceholderText("작업 폴더 경로가 여기에 표시됩니다...")
         path_display_layout.addWidget(self.current_path_label, 1)
         
         path_layout.addLayout(path_display_layout)
@@ -516,6 +506,7 @@ class MainWindow(QMainWindow):
                     # 거의 전체 표시
                     display_path = "..." + display_path[-147:]
             
+            # QLineEdit으로 변경된 current_path_label 업데이트
             self.current_path_label.setText(display_path)
             self.current_path_label.setToolTip(f"전체 경로: {path}")
             
@@ -529,7 +520,6 @@ class MainWindow(QMainWindow):
                         working_display = f"...\\{working_parts[-2]}\\{working_parts[-1]}"
                 
                 self.path_status_label.setText(f"📁 실제 작업 경로: {working_display}")
-                self.path_status_label.setStyleSheet("color: #17a2b8; font-size: 9pt;")
                 self.path_status_label.setToolTip(f"전체 작업 경로: {working_path}")
             else:
                 self.path_status_label.setToolTip("")
