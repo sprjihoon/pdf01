@@ -262,7 +262,10 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("PDF Excel Matcher - 구매자 순서로 PDF 자동 정렬")
-        self.setMinimumSize(900, 750)
+        
+        # 전체화면으로 설정
+        self.showMaximized()  # 최대화 모드로 시작
+        self.setMinimumSize(1200, 800)  # 최소 크기도 증가
         
         # 설정 관리자 (Windows 레지스트리, macOS/Linux는 적절한 위치에 저장)
         self.settings = QSettings("PDFExcelMatcher", "PathSettings")
@@ -350,22 +353,26 @@ class MainWindow(QMainWindow):
         self.current_path_label = QLabel("경로가 설정되지 않았습니다")
         self.current_path_label.setStyleSheet("""
             QLabel {
-                background-color: white;
+                background-color: #ffffff;
                 border: 2px solid #2196F3;
-                padding: 30px 20px;
+                padding: 20px;
                 border-radius: 8px;
-                font-family: 'Consolas', 'Courier New', monospace;
-                font-size: 11pt;
-                color: #333;
-                font-weight: normal;
-                line-height: 1.6;
-                qproperty-alignment: 'AlignVCenter | AlignLeft';
+                font-family: 'Arial', 'Malgun Gothic', sans-serif;
+                font-size: 14pt;
+                color: #000000;
+                font-weight: bold;
+                text-align: left;
             }
         """)
-        self.current_path_label.setMinimumHeight(80)  # 70 → 80으로 추가 증가
+        self.current_path_label.setMinimumHeight(65)
+        self.current_path_label.setMaximumHeight(65)
         self.current_path_label.setWordWrap(False)
         self.current_path_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.current_path_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        
+        # 텍스트 마진 설정
+        self.current_path_label.setContentsMargins(5, 5, 5, 5)
+        self.current_path_label.setIndent(10)  # 텍스트 들여쓰기
         current_path_layout.addWidget(self.current_path_label)
         path_info_layout.addLayout(current_path_layout)
         
@@ -598,36 +605,24 @@ class MainWindow(QMainWindow):
         # 엑셀
         excel_layout = QHBoxLayout()
         excel_layout.addWidget(QLabel("엑셀 파일:"))
-        
         self.excel_edit = QLineEdit()
         self.excel_edit.setPlaceholderText("주문번호 컬럼이 있는 엑셀 파일...")
-        self.excel_edit.setMinimumHeight(35)
-        self.excel_edit.setMinimumWidth(400)
-        self.excel_edit.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)  # 안정적인 크기
-        excel_layout.addWidget(self.excel_edit, 3)  # 더 많은 공간 할당
-        
+        excel_layout.addWidget(self.excel_edit)
         excel_btn = QPushButton("찾아보기")
-        excel_btn.setMinimumSize(100, 35)
         excel_btn.clicked.connect(self.browse_excel)
-        excel_layout.addWidget(excel_btn, 0)  # 고정 크기
+        excel_layout.addWidget(excel_btn)
         
         file_layout.addLayout(excel_layout)
         
         # PDF
         pdf_layout = QHBoxLayout()
         pdf_layout.addWidget(QLabel("PDF 파일:"))
-        
         self.pdf_edit = QLineEdit()
         self.pdf_edit.setPlaceholderText("정렬할 PDF 파일 (텍스트 기반)...")
-        self.pdf_edit.setMinimumHeight(35)
-        self.pdf_edit.setMinimumWidth(400)
-        self.pdf_edit.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)  # 안정적인 크기
-        pdf_layout.addWidget(self.pdf_edit, 3)  # 더 많은 공간 할당
-        
+        pdf_layout.addWidget(self.pdf_edit)
         pdf_btn = QPushButton("찾아보기")
-        pdf_btn.setMinimumSize(100, 35)
         pdf_btn.clicked.connect(self.browse_pdf)
-        pdf_layout.addWidget(pdf_btn, 0)  # 고정 크기
+        pdf_layout.addWidget(pdf_btn)
         
         file_layout.addLayout(pdf_layout)
         
