@@ -31,15 +31,71 @@ def load_excel(path):
     if ext not in ['.xls', '.xlsx']:
         raise ValueError(f"지원하지 않는 파일 형식: {ext}")
     
-    # 엑셀 읽기
-    if ext == '.xls':
-        df = pd.read_excel(path, engine='xlrd')
-    else:
-        df = pd.read_excel(path, engine='openpyxl')
+    # 엑셀/표 데이터 읽기 (확장자와 파일 시그니처 기반 자동 판별)
+    # 일부 환경에서 .xls 확장자이지만 실제로는 HTML/CSV/.xlsx 인 경우가 있어 안전하게 처리
+    df = None
+    head_bytes = b''
+    try:
+        with open(path, 'rb') as f:
+            head_bytes = f.read(4096)
+    except Exception:
+        pass
+
+    head_lower = head_bytes.lower() if head_bytes else b''
+
+    try:
+        if ext == '.xlsx':
+            # 표준 xlsx
+            df = pd.read_excel(path, engine='openpyxl')
+        elif ext == '.xls':
+            # 시그니처 기반 판별
+            if head_bytes.startswith(b'PK'):
+                # zip 시그니처: 실제로는 xlsx
+                df = pd.read_excel(path, engine='openpyxl')
+            elif (b'<html' in head_lower) or head_lower.strip().startswith(b'<!doctype html') or head_lower.strip().startswith(b'<meta'):
+                # HTML 표를 .xls로 저장한 경우
+                try:
+                    tables = pd.read_html(path)
+                    if not tables:
+                        raise ValueError('HTML 표를 찾지 못했습니다.')
+                    df = tables[0]
+                except Exception as e:
+                    raise ValueError(
+                        "파일이 HTML 표 형식으로 저장된 .xls 입니다. 엑셀에서 '다른 이름으로 저장'으로 .xlsx로 저장 후 다시 시도하세요.\n"
+                        f"원인: {e}"
+                    )
+            else:
+                # 구형 바이너리 xls 시도
+                try:
+                    df = pd.read_excel(path, engine='xlrd')
+                except Exception:
+                    # CSV 가능성 처리 (확장자만 .xls인 경우)
+                    try:
+                        df = pd.read_csv(path, engine='python', sep=None, encoding='utf-8-sig')
+                    except Exception:
+                        df = pd.read_csv(path, engine='python', sep=None, encoding='cp949')
+        else:
+            # 기타 확장자는 안전하게 xlsx 파서 우선 시도
+            df = pd.read_excel(path, engine='openpyxl')
+    except ValueError:
+        # 위에서 사용자 친화 메시지로 래이즈한 경우 그대로 전달
+        raise
+    except Exception as e:
+        raise ValueError(
+            "엑셀/표 파일을 읽는 중 오류가 발생했습니다. 파일이 손상되었거나 형식이 올바르지 않을 수 있습니다.\n"
+            "- 권장: 엑셀에서 파일을 열고 '다른 이름으로 저장' → .xlsx 로 저장 후 다시 시도하세요.\n"
+            f"원인: {e}"
+        )
+    
+    # 헤더가 없는 경우 (컬럼명이 0, 1, 2... 인 경우) 첫 번째 행을 헤더로 사용
+    if df is not None and all(isinstance(col, int) or str(col).isdigit() for col in df.columns):
+        # 첫 번째 행을 헤더로 설정
+        df.columns = df.iloc[0]
+        df = df[1:].reset_index(drop=True)
     
     # 필수 컬럼 확인 (대소문자 무시) - 주문번호만 필수
     required_cols = ['주문번호']
-    df_cols_lower = {col.strip().lower(): col for col in df.columns}
+    df_cols_lower = {str(col).strip().lower(): col for col in df.columns}
     
     # 컬럼 매핑
     col_mapping = {}
@@ -56,22 +112,23 @@ def load_excel(path):
     for req_col in required_cols:
         found = False
         
-        # 직접 일치 체크
+        # 1단계: 정확한 일치 체크 (완전 일치만)
         for df_col_lower, df_col in df_cols_lower.items():
-            if req_col.lower() in df_col_lower or df_col_lower in req_col.lower():
+            if req_col.lower() == df_col_lower:
                 col_mapping[df_col] = req_col
                 found = True
                 break
         
         if not found:
-            # 패턴 매칭
+            # 2단계: 패턴 매칭 (정확한 패턴만)
             for df_col_lower, df_col in df_cols_lower.items():
+                df_col_clean = df_col_lower.replace(' ', '').replace('_', '')
+                
                 for pattern in column_patterns[req_col]:
-                    # 공백 제거 후 비교
-                    df_col_clean = df_col_lower.replace(' ', '').replace('_', '')
-                    pattern_clean = pattern.replace(' ', '').replace('_', '')
+                    pattern_clean = pattern.lower().replace(' ', '').replace('_', '')
                     
-                    if pattern_clean in df_col_clean or df_col_clean in pattern_clean:
+                    # 정확히 일치하는 경우만 허용
+                    if pattern_clean == df_col_clean:
                         col_mapping[df_col] = req_col
                         found = True
                         break
@@ -97,6 +154,18 @@ def load_excel(path):
     
     # 빈 행 제거 (주문번호가 비어있는 행)
     df = df.dropna(subset=['주문번호'])
+    
+    # 데이터 타입을 문자열로 변환 (숫자가 float로 읽히는 것 방지)
+    df['주문번호'] = df['주문번호'].astype(str).str.strip()
+    
+    # 추가 필터링: 빈 문자열, 'nan', 'None' 등 제거
+    df = df[df['주문번호'] != '']
+    df = df[df['주문번호'].str.lower() != 'nan']
+    df = df[df['주문번호'].str.lower() != 'none']
+    
+    # 숫자가 아닌 문자가 너무 많은 행 제거 (주문번호는 주로 숫자)
+    # 최소 6자리 이상의 숫자를 포함해야 함
+    df = df[df['주문번호'].str.contains(r'\d{6,}', regex=True)]
     
     return df
 

@@ -1,3 +1,6 @@
 ﻿timestamp,order_no,file_path,page_ranges,printer_name,copies,duplex,success,error_message,print_duration_ms
 2025-10-11 10:40:28,0100012025100900005,C:\Users\one\Desktop\구매계약서\ordered_20251011_v4.pdf,11,Samsung M267x 287x Series,1,N,N,,60013
 2025-10-11 10:55:31,0100012025100800023,C:\Users\one\Desktop\구매계약서\ordered_20251011_v6.pdf,31,Samsung M267x 287x Series,1,N,N,,60030
+2025-10-11 11:17:54,5100800057,C:\Users\one\Desktop\구매계약서\ordered_20251011_v7.pdf,12,Samsung M267x 287x Series,1,N,N,,17392
+2025-10-11 11:24:17,5100800057,C:\Users\one\Desktop\구매계약서\ordered_20251011_v7.pdf,12,Samsung M267x 287x Series,1,N,N,,18646
+2025-10-11 11:26:38,5100800057,C:\Users\one\Desktop\구매계약서\ordered_20251011_v7.pdf,12,Samsung M267x 287x Series,1,N,Y,,964

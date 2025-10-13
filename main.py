@@ -95,11 +95,10 @@ class ProcessingWorker(QThread):
                     page_to_order[result_page_idx] = order_number_to_display_num[order_number]
                     result_page_idx += 1
             
-            # 미매칭 페이지는 마지막부터 순차적으로 번호 부여
+            # 미매칭 페이지는 번호 없이 마지막에 추가
             for page_idx in leftover_pages:
                 ordered_indices.append(page_idx)
-                page_to_order[result_page_idx] = display_num
-                display_num += 1
+                # page_to_order에 추가하지 않음 = 넘버링 없음
                 result_page_idx += 1
             
             self.progress.emit("💾 PDF 저장 중...")

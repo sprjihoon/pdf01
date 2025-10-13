@@ -15,7 +15,7 @@
     "copies": 1,
     "duplex": false,
     "sumatra_path": "C:\\Users\\one\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe",
-    "default_viewer": "edge"
+    "default_viewer": "default"
   },
   "ui_settings": {
     "window_size": [

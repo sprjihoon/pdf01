@@ -8,4 +8,6 @@ pypdf>=3.17.4
 rapidfuzz>=3.5.2
 pyinstaller>=6.3.0
 reportlab>=4.0.0
+lxml>=4.9.0
+html5lib>=1.1
 
