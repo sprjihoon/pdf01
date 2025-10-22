@@ -20,38 +20,43 @@ def extract_text_pages_fast(pdf_path: str) -> List[str]:
     빠른 텍스트 추출기: 우선 PyMuPDF(fitz) 사용, 실패 시 pdfplumber로 폴백
     Returns: 각 페이지의 텍스트 리스트
     """
-    # 1) PyMuPDF(fitz) 시도
+    # 1) PyMuPDF(fitz) 시도 - 가장 빠름
     try:
         import fitz  # PyMuPDF
         texts: List[str] = []
         with fitz.open(pdf_path) as doc:
             for page in doc:
-                # 기본 텍스트 추출 (레이아웃 무시, 속도 우선)
-                txt = page.get_text("text") or ""
+                # 초고속 텍스트 추출 ("text" 모드, flags=0으로 추가 처리 제거)
+                txt = page.get_text("text", flags=0) or ""
                 texts.append(txt)
         # PyMuPDF로 성공
         return texts
     except Exception:
         pass
 
-    # 2) pdfplumber 폴백
+    # 2) pdfplumber 폴백 (느리지만 안전)
     texts = []
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            txt = page.extract_text() or ""
-            texts.append(txt)
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            for page in pdf.pages:
+                txt = page.extract_text() or ""
+                texts.append(txt)
+    except Exception:
+        # 최후의 폴백: 빈 텍스트 반환
+        pass
     return texts
 from multiprocessing import cpu_count
 import multiprocessing
 
 
-def search_order_in_pdf(pdf_path: str, order_number: str) -> Optional[List[int]]:
+def search_order_in_pdf(pdf_path: str, order_number: str, max_pages: int = 0) -> Optional[List[int]]:
     """
     PDF에서 주문번호를 찾아 페이지 번호 리스트 반환
     
     Args:
         pdf_path: PDF 파일 경로
         order_number: 검색할 주문번호
+        max_pages: 검색할 최대 페이지 수 (0=전체, 기본값)
         
     Returns:
         페이지 번호 리스트 (1-based) 또는 None
@@ -65,8 +70,17 @@ def search_order_in_pdf(pdf_path: str, order_number: str) -> Optional[List[int]]
     try:
         # 빠른 텍스트 추출 (PyMuPDF → pdfplumber 폴백)
         page_texts = extract_text_pages_fast(pdf_path)
+        
+        # 최대 페이지 제한 (0이면 전체)
+        if max_pages > 0:
+            page_texts = page_texts[:max_pages]
 
         for page_num, text in enumerate(page_texts, start=1):
+            # 빠른 사전 체크: 주문번호가 텍스트에 포함되어 있는지 확인
+            if normalized_order not in text and not any(normalized_order[i:i+8] in text for i in range(max(0, len(normalized_order)-8))):
+                # 부분 문자열도 없으면 스킵 (훨씬 빠름)
+                continue
+            
             # 페이지에서 주문번호 후보들 추출
             order_candidates = extract_order_numbers_from_text(text)
 
@@ -120,7 +134,7 @@ def _search_single_file(args):
 
 
 def search_order_in_folder_multiprocess(folder_path: str, order_number: str,
-                                        progress_callback=None, stop_flag=None) -> List[Tuple[str, List[int], float]]:
+                                        progress_callback=None, stop_flag=None, find_all=False) -> List[Tuple[str, List[int], float]]:
     """
     폴더 내 모든 PDF에서 주문번호 검색 (멀티프로세싱 버전)
     
@@ -129,6 +143,7 @@ def search_order_in_folder_multiprocess(folder_path: str, order_number: str,
         order_number: 검색할 주문번호
         progress_callback: 진행 상황 콜백 함수
         stop_flag: 중지 플래그 (callable)
+        find_all: True면 전체 검색, False면 1개 찾으면 중단 (기본값: False)
         
     Returns:
         [(pdf_path, [page_numbers], modified_time), ...] 리스트 (수정시간 최신순 정렬)
@@ -166,8 +181,8 @@ def search_order_in_folder_multiprocess(folder_path: str, order_number: str,
     pdf_files_with_size.sort(key=lambda x: x[1])
     pdf_files_sorted = [p[0] for p in pdf_files_with_size]
     
-    # CPU 코어 수 결정 (최대 4개로 제한해 안정성 확보)
-    num_processes = min(cpu_count(), 4, total_files)
+    # CPU 코어 수 결정 (시스템 최대 코어 활용)
+    num_processes = min(cpu_count(), total_files)
     
     if progress_callback:
         progress_callback(f"⚡ {num_processes}개 프로세스로 병렬 검색 시작...")
@@ -180,12 +195,12 @@ def search_order_in_folder_multiprocess(folder_path: str, order_number: str,
     processed_count = 0
     
     try:
-        # 청크 크기 설정 (진행 상황 업데이트를 위해)
-        chunk_size = max(1, total_files // (num_processes * 10))
+        # 청크 크기 설정 (더 작은 청크로 빠른 응답)
+        chunk_size = max(1, total_files // (num_processes * 20))
 
-        # Windows 안전한 spawn 컨텍스트 사용 및 작업 수 제한으로 누수 방지
+        # Windows 안전한 spawn 컨텍스트 사용 (작업 수 제한 늘려 재생성 오버헤드 감소)
         ctx = multiprocessing.get_context("spawn")
-        with ctx.Pool(processes=num_processes, maxtasksperchild=20) as pool:
+        with ctx.Pool(processes=num_processes, maxtasksperchild=50) as pool:
             for result in pool.imap_unordered(_search_single_file, search_args, chunksize=chunk_size):
                 # 중지 플래그 확인
                 if stop_flag and stop_flag():
@@ -204,9 +219,16 @@ def search_order_in_folder_multiprocess(folder_path: str, order_number: str,
                     filename = os.path.basename(pdf_path)
                     if progress_callback:
                         progress_callback(f"✅ [{processed_count}/{total_files}] {filename} - 페이지: {', '.join(map(str, pages))}")
+                    
+                    # find_all=False면 1개 파일을 찾으면 검색 중단
+                    if not find_all:
+                        pool.terminate()
+                        if progress_callback:
+                            progress_callback(f"🎯 매칭된 파일 발견! 검색 중단 ({processed_count}/{total_files})")
+                        break
                 else:
-                    # 10개마다 진행 상황 업데이트
-                    if processed_count % 10 == 0 and progress_callback:
+                    # 20개마다 진행 상황 업데이트 (오버헤드 감소)
+                    if processed_count % 20 == 0 and progress_callback:
                         progress_callback(f"🔍 검색 중... [{processed_count}/{total_files}] (발견: {found_count}개)")
     
     except Exception as e:
@@ -223,7 +245,7 @@ def search_order_in_folder_multiprocess(folder_path: str, order_number: str,
 
 
 def search_order_in_folder(folder_path: str, order_number: str, 
-                           progress_callback=None, stop_flag=None, use_multiprocess=True) -> List[Tuple[str, List[int], float]]:
+                           progress_callback=None, stop_flag=None, use_multiprocess=True, find_all=False) -> List[Tuple[str, List[int], float]]:
     """
     폴더 내 모든 PDF에서 주문번호 검색
     
@@ -233,6 +255,7 @@ def search_order_in_folder(folder_path: str, order_number: str,
         progress_callback: 진행 상황 콜백 함수
         stop_flag: 중지 플래그 (callable)
         use_multiprocess: 멀티프로세싱 사용 여부 (기본 True)
+        find_all: True면 전체 검색, False면 1개 찾으면 중단 (기본값: False)
         
     Returns:
         [(pdf_path, [page_numbers], modified_time), ...] 리스트 (수정시간 최신순 정렬)
@@ -244,7 +267,7 @@ def search_order_in_folder(folder_path: str, order_number: str,
             pdf_count = sum(1 for root, dirs, files in os.walk(folder_path) 
                           for file in files if file.lower().endswith('.pdf'))
             if pdf_count >= 2:
-                return search_order_in_folder_multiprocess(folder_path, order_number, progress_callback, stop_flag)
+                return search_order_in_folder_multiprocess(folder_path, order_number, progress_callback, stop_flag, find_all)
         except:
             pass
     
@@ -301,6 +324,12 @@ def search_order_in_folder(folder_path: str, order_number: str,
             
             if progress_callback:
                 progress_callback(f"✅ 발견! {filename} - 페이지: {', '.join(map(str, pages))}")
+                if not find_all:
+                    progress_callback(f"🎯 매칭된 파일 발견! 검색 중단 ({idx}/{total_files})")
+            
+            # find_all=False면 1개 파일을 찾으면 검색 중단
+            if not find_all:
+                break
     
     if progress_callback:
         progress_callback(f"🎯 검색 완료: {len(results)}개 파일에서 발견")

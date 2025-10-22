@@ -30,13 +30,14 @@ class ProcessingWorker(QThread):
     finished = Signal(object)
     error = Signal(str)
     
-    def __init__(self, excel_path, pdf_path, output_dir, use_fuzzy, threshold):
+    def __init__(self, excel_path, pdf_path, output_dir, use_fuzzy, threshold, only_matched=False):
         super().__init__()
         self.excel_path = excel_path
         self.pdf_path = pdf_path
         self.output_dir = output_dir
         self.use_fuzzy = use_fuzzy
         self.threshold = threshold
+        self.only_matched = only_matched
     
     def run(self):
         try:
@@ -95,11 +96,15 @@ class ProcessingWorker(QThread):
                     page_to_order[result_page_idx] = order_number_to_display_num[order_number]
                     result_page_idx += 1
             
-            # 미매칭 페이지는 번호 없이 마지막에 추가
-            for page_idx in leftover_pages:
-                ordered_indices.append(page_idx)
-                # page_to_order에 추가하지 않음 = 넘버링 없음
-                result_page_idx += 1
+            # 미매칭 페이지 처리 (옵션에 따라)
+            if not self.only_matched:
+                # 미매칭 페이지도 번호 없이 마지막에 추가
+                for page_idx in leftover_pages:
+                    ordered_indices.append(page_idx)
+                    # page_to_order에 추가하지 않음 = 넘버링 없음
+                    result_page_idx += 1
+            else:
+                self.progress.emit(f"ℹ️ 미매칭 페이지 {len(leftover_pages)}개 제외됨")
             
             self.progress.emit("💾 PDF 저장 중...")
             pdf_out_path, csv_out_path = get_output_filenames(self.output_dir)
@@ -156,13 +161,14 @@ class SearchWorker(QThread):
     finished = Signal(object)
     error = Signal(str)
     
-    def __init__(self, search_path, order_number, is_folder, save_folder=None, use_multiprocess=True):
+    def __init__(self, search_path, order_number, is_folder, save_folder=None, use_multiprocess=True, find_all=False):
         super().__init__()
         self.search_path = search_path
         self.order_number = order_number
         self.is_folder = is_folder
         self.save_folder = save_folder
         self.use_multiprocess = use_multiprocess
+        self.find_all = find_all
         self._stop_flag = False
     
     def stop(self):
@@ -187,7 +193,8 @@ class SearchWorker(QThread):
                     self.order_number,
                     progress_callback=progress_cb,
                     stop_flag=stop_check,
-                    use_multiprocess=self.use_multiprocess
+                    use_multiprocess=self.use_multiprocess,
+                    find_all=self.find_all
                 )
                 
                 if self._stop_flag:
@@ -348,10 +355,17 @@ class MainWindow(QMainWindow):
         # 옵션
         option_group = QGroupBox("⚙️ 옵션")
         option_layout = QHBoxLayout()
+        
         self.fuzzy_check = QCheckBox("유사도 매칭")
         self.fuzzy_check.setToolTip("정확히 일치하지 않아도 유사한 경우 매칭 (권장하지 않음)")
         self.fuzzy_check.setChecked(self.settings.value("sort/use_fuzzy", False, type=bool))
         option_layout.addWidget(self.fuzzy_check)
+        
+        self.only_matched_check = QCheckBox("매칭된 페이지만 포함")
+        self.only_matched_check.setToolTip("체크: 넘버링된 페이지만 PDF 생성\n체크 해제: 미매칭 페이지도 함께 포함 (번호 없음)")
+        self.only_matched_check.setChecked(self.settings.value("sort/only_matched", False, type=bool))
+        option_layout.addWidget(self.only_matched_check)
+        
         option_layout.addStretch()
         option_group.setLayout(option_layout)
         layout.addWidget(option_group)
@@ -515,6 +529,12 @@ class MainWindow(QMainWindow):
         self.use_mp_check.setToolTip("PDF가 10개 이상일 때 병렬 검색 사용 (빠르지만 시스템에 따라 불안정할 수 있음)")
         self.use_mp_check.setChecked(self.settings.value("search/use_multiprocess", True, type=bool))
         search_btn_layout.addWidget(self.use_mp_check)
+        
+        # 전체 검색 토글
+        self.find_all_check = QCheckBox("전체 검색 후 최신 파일 찾기")
+        self.find_all_check.setToolTip("체크: 모든 파일 검색 후 최신 파일 선택\n체크 해제: 첫 번째 매칭 파일에서 검색 중단 (빠름)")
+        self.find_all_check.setChecked(self.settings.value("search/find_all", False, type=bool))
+        search_btn_layout.addWidget(self.find_all_check)
 
         layout.addLayout(search_btn_layout)
         
@@ -606,11 +626,13 @@ class MainWindow(QMainWindow):
         self.open_result_csv_btn.setEnabled(False)
         
         use_fuzzy = self.fuzzy_check.isChecked()
+        only_matched = self.only_matched_check.isChecked()
         
         # 설정 저장
         self.settings.setValue("sort/use_fuzzy", use_fuzzy)
+        self.settings.setValue("sort/only_matched", only_matched)
         
-        self.sort_worker = ProcessingWorker(excel_path, pdf_path, output_dir, use_fuzzy, 98)
+        self.sort_worker = ProcessingWorker(excel_path, pdf_path, output_dir, use_fuzzy, 98, only_matched)
         self.sort_worker.progress.connect(self.update_sort_log)
         self.sort_worker.finished.connect(self.sort_finished)
         self.sort_worker.error.connect(self.sort_error)
@@ -715,13 +737,17 @@ class MainWindow(QMainWindow):
         self.open_folder_btn_search.setEnabled(False)
         
         is_folder = self.radio_folder.isChecked()
+        find_all = self.find_all_check.isChecked()
+        
         # 설정 저장
         self.settings.setValue("search/use_multiprocess", self.use_mp_check.isChecked())
+        self.settings.setValue("search/find_all", find_all)
 
         self.search_worker = SearchWorker(
             search_path, order_number, is_folder, 
             save_folder if save_folder else None,
-            use_multiprocess=self.use_mp_check.isChecked()
+            use_multiprocess=self.use_mp_check.isChecked(),
+            find_all=find_all
         )
         self.search_worker.progress.connect(self.update_search_log)
         self.search_worker.finished.connect(self.search_finished)
